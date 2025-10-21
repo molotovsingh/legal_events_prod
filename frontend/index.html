@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Legal Events v2 - Test Interface</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+    <style>
+        .fade-in {
+            animation: fadeIn 0.5s;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #3498db;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+        <!-- Header -->
+        <div class="bg-white shadow-lg rounded-lg mb-8 p-6">
+            <h1 class="text-3xl font-bold text-gray-800 mb-2">⚖️ Legal Events Extraction v2</h1>
+            <p class="text-gray-600">Test Interface for Document Processing</p>
+            
+            <!-- Health Status -->
+            <div id="healthStatus" class="mt-4 p-3 bg-gray-100 rounded">
+                <span class="text-sm font-semibold">System Status:</span>
+                <span id="statusText" class="text-sm ml-2">Checking...</span>
+            </div>
+        </div>
+
+        <!-- Quick Setup Section -->
+        <div class="bg-white shadow-lg rounded-lg mb-8 p-6">
+            <h2 class="text-xl font-bold text-gray-800 mb-4">🚀 Quick Setup</h2>
+            
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <!-- Create Client -->
+                <div class="border rounded p-4">
+                    <h3 class="font-semibold mb-2">1. Create Client</h3>
+                    <input type="text" id="clientName" placeholder="Client Name" 
+                           class="w-full p-2 border rounded mb-2">
+                    <button onclick="createClient()" 
+                            class="w-full bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
+                        Create Client
+                    </button>
+                    <div id="clientResult" class="mt-2 text-sm"></div>
+                </div>
+
+                <!-- Create Case -->
+                <div class="border rounded p-4">
+                    <h3 class="font-semibold mb-2">2. Create Case</h3>
+                    <input type="number" id="clientId" placeholder="Client ID" 
+                           class="w-full p-2 border rounded mb-2">
+                    <input type="text" id="caseName" placeholder="Case Name" 
+                           class="w-full p-2 border rounded mb-2">
+                    <button onclick="createCase()" 
+                            class="w-full bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
+                        Create Case
+                    </button>
+                    <div id="caseResult" class="mt-2 text-sm"></div>
+                </div>
+
+                <!-- Upload Documents -->
+                <div class="border rounded p-4">
+                    <h3 class="font-semibold mb-2">3. Process Documents</h3>
+                    <input type="number" id="caseIdForRun" placeholder="Case ID" 
+                           class="w-full p-2 border rounded mb-2">
+                    <input type="file" id="fileInput" multiple accept=".pdf,.docx,.txt" 
+                           class="w-full p-2 border rounded mb-2">
+                    <select id="providerSelect" class="w-full p-2 border rounded mb-2">
+                        <option value="openrouter">OpenRouter (Llama 3.3)</option>
+                        <option value="anthropic">Anthropic (Claude)</option>
+                        <option value="openai">OpenAI (GPT-4)</option>
+                    </select>
+                    <button onclick="processDocuments()" 
+                            class="w-full bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">
+                        Process Documents
+                    </button>
+                    <div id="uploadResult" class="mt-2 text-sm"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Runs -->
+        <div class="bg-white shadow-lg rounded-lg mb-8 p-6">
+            <h2 class="text-xl font-bold text-gray-800 mb-4">📊 Recent Runs</h2>
+            <button onclick="loadRuns()" 
+                    class="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600 mb-4">
+                Refresh Runs
+            </button>
+            <div id="runsList" class="space-y-2">
+                <p class="text-gray-500">No runs loaded yet...</p>
+            </div>
+        </div>
+
+        <!-- Run Details -->
+        <div id="runDetails" class="bg-white shadow-lg rounded-lg mb-8 p-6 hidden">
+            <h2 class="text-xl font-bold text-gray-800 mb-4">📄 Run Details</h2>
+            <div id="runDetailsContent"></div>
+        </div>
+
+        <!-- Events Table -->
+        <div id="eventsSection" class="bg-white shadow-lg rounded-lg mb-8 p-6 hidden">
+            <h2 class="text-xl font-bold text-gray-800 mb-4">📋 Extracted Events</h2>
+            <div class="mb-4 space-x-2">
+                <button onclick="exportEvents('csv')" 
+                        class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">
+                    Export CSV
+                </button>
+                <button onclick="exportEvents('xlsx')" 
+                        class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
+                    Export Excel
+                </button>
+                <button onclick="exportEvents('json')" 
+                        class="bg-purple-500 text-white px-4 py-2 rounded hover:bg-purple-600">
+                    Export JSON
+                </button>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="min-w-full table-auto">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-4 py-2 text-left">No</th>
+                            <th class="px-4 py-2 text-left">Date</th>
+                            <th class="px-4 py-2 text-left">Event Particulars</th>
+                            <th class="px-4 py-2 text-left">Citation</th>
+                            <th class="px-4 py-2 text-left">Document Reference</th>
+                        </tr>
+                    </thead>
+                    <tbody id="eventsTableBody">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:8000';
+        let currentRunId = null;
+
+        // Check system health on load
+        window.onload = () => {
+            checkHealth();
+            loadRuns();
+        };
+
+        async function checkHealth() {
+            try {
+                const response = await axios.get(`${API_URL}/health`);
+                const health = response.data;
+                
+                const statusEl = document.getElementById('statusText');
+                if (health.status === 'healthy') {
+                    statusEl.innerHTML = '<span class="text-green-600">✅ All systems operational</span>';
+                } else {
+                    statusEl.innerHTML = '<span class="text-yellow-600">⚠️ Some systems degraded</span>';
+                }
+                
+                // Show component status
+                const components = health.components;
+                let statusHtml = '<div class="mt-2 text-xs">';
+                for (const [component, status] of Object.entries(components)) {
+                    const icon = status === 'healthy' ? '✅' : '❌';
+                    statusHtml += `<span class="mr-3">${icon} ${component}</span>`;
+                }
+                statusHtml += '</div>';
+                statusEl.innerHTML += statusHtml;
+                
+            } catch (error) {
+                document.getElementById('statusText').innerHTML = 
+                    '<span class="text-red-600">❌ Cannot connect to API</span>';
+                console.error('Health check failed:', error);
+            }
+        }
+
+        async function createClient() {
+            const name = document.getElementById('clientName').value;
+            if (!name) {
+                alert('Please enter a client name');
+                return;
+            }
+
+            try {
+                const response = await axios.post(`${API_URL}/v1/clients`, {
+                    name: name,
+                    reference_code: `REF-${Date.now()}`
+                });
+                
+                const client = response.data;
+                document.getElementById('clientResult').innerHTML = 
+                    `<span class="text-green-600">✅ Created: Client ID ${client.id}</span>`;
+                document.getElementById('clientId').value = client.id;
+                
+            } catch (error) {
+                document.getElementById('clientResult').innerHTML = 
+                    `<span class="text-red-600">❌ Error: ${error.response?.data?.detail || error.message}</span>`;
+            }
+        }
+
+        async function createCase() {
+            const clientId = document.getElementById('clientId').value;
+            const caseName = document.getElementById('caseName').value;
+            
+            if (!clientId || !caseName) {
+                alert('Please enter both Client ID and Case Name');
+                return;
+            }
+
+            try {
+                const response = await axios.post(`${API_URL}/v1/cases`, {
+                    client_id: parseInt(clientId),
+                    name: caseName,
+                    description: 'Test case created from UI'
+                });
+                
+                const caseData = response.data;
+                document.getElementById('caseResult').innerHTML = 
+                    `<span class="text-green-600">✅ Created: Case ID ${caseData.id}</span>`;
+                document.getElementById('caseIdForRun').value = caseData.id;
+                
+            } catch (error) {
+                document.getElementById('caseResult').innerHTML = 
+                    `<span class="text-red-600">❌ Error: ${error.response?.data?.detail || error.message}</span>`;
+            }
+        }
+
+        async function processDocuments() {
+            const caseId = document.getElementById('caseIdForRun').value;
+            const files = document.getElementById('fileInput').files;
+            const provider = document.getElementById('providerSelect').value;
+            
+            if (!caseId || files.length === 0) {
+                alert('Please select case ID and files');
+                return;
+            }
+
+            const uploadResult = document.getElementById('uploadResult');
+            uploadResult.innerHTML = '<div class="spinner"></div> Processing...';
+
+            try {
+                // Create run
+                const runResponse = await axios.post(`${API_URL}/v1/runs`, {
+                    case_id: parseInt(caseId),
+                    provider: provider,
+                    file_count: files.length
+                });
+                
+                const runId = runResponse.data.run_id;
+                const uploadUrls = runResponse.data.upload_urls;
+                
+                // Upload files
+                const manifest = [];
+                for (let i = 0; i < files.length; i++) {
+                    const file = files[i];
+                    const url = uploadUrls[i];
+                    
+                    // Upload file to presigned URL
+                    await axios.put(url, file, {
+                        headers: {
+                            'Content-Type': file.type || 'application/octet-stream'
+                        }
+                    });
+                    
+                    // Calculate SHA256 (simplified - in production use proper hashing)
+                    const sha256 = btoa(file.name + file.size).substring(0, 64);
+                    
+                    manifest.push({
+                        filename: file.name,
+                        size_bytes: file.size,
+                        sha256: sha256,
+                        storage_key: `cases/${caseId}/runs/${runId}/docs/${file.name}`,
+                        mime_type: file.type
+                    });
+                }
+                
+                // Start processing
+                await axios.put(`${API_URL}/v1/runs/${runId}/start`, {
+                    files: manifest
+                });
+                
+                uploadResult.innerHTML = 
+                    `<span class="text-green-600">✅ Run ${runId} started!</span>`;
+                
+                // Start monitoring
+                monitorRun(runId);
+                
+            } catch (error) {
+                uploadResult.innerHTML = 
+                    `<span class="text-red-600">❌ Error: ${error.response?.data?.detail || error.message}</span>`;
+            }
+        }
+
+        async function monitorRun(runId) {
+            const interval = setInterval(async () => {
+                try {
+                    const response = await axios.get(`${API_URL}/v1/runs/${runId}`);
+                    const run = response.data;
+                    
+                    // Update run in list
+                    updateRunInList(run);
+                    
+                    // If complete, stop monitoring and load events
+                    if (['success', 'failed', 'partial'].includes(run.status)) {
+                        clearInterval(interval);
+                        if (run.status !== 'failed') {
+                            loadEvents(runId);
+                        }
+                    }
+                } catch (error) {
+                    console.error('Monitor error:', error);
+                    clearInterval(interval);
+                }
+            }, 2000); // Check every 2 seconds
+        }
+
+        async function loadRuns() {
+            try {
+                // For demo, we'll fetch recent cases and their runs
+                const clientsResponse = await axios.get(`${API_URL}/v1/clients`);
+                const clients = clientsResponse.data;
+                
+                let runsHtml = '';
+                
+                for (const client of clients.slice(0, 5)) { // Limit to 5 clients
+                    const casesResponse = await axios.get(`${API_URL}/v1/clients/${client.id}/cases`);
+                    const cases = casesResponse.data;
+                    
+                    for (const caseData of cases.slice(0, 3)) { // Limit to 3 cases per client
+                        // Note: In production, add endpoint to get runs by case
+                        runsHtml += `
+                            <div class="border rounded p-4 hover:bg-gray-50">
+                                <div class="flex justify-between items-center">
+                                    <div>
+                                        <span class="font-semibold">${client.name}</span> - 
+                                        <span class="text-gray-600">${caseData.name}</span>
+                                    </div>
+                                    <button onclick="viewCase(${caseData.id})" 
+                                            class="bg-blue-500 text-white px-3 py-1 rounded text-sm hover:bg-blue-600">
+                                        View Case
+                                    </button>
+                                </div>
+                            </div>
+                        `;
+                    }
+                }
+                
+                document.getElementById('runsList').innerHTML = runsHtml || 
+                    '<p class="text-gray-500">No runs found. Create a client and case first.</p>';
+                
+            } catch (error) {
+                console.error('Load runs error:', error);
+                document.getElementById('runsList').innerHTML = 
+                    '<p class="text-red-600">Failed to load runs</p>';
+            }
+        }
+
+        function updateRunInList(run) {
+            // Update the run display with current status
+            const statusColors = {
+                'queued': 'text-gray-600',
+                'processing': 'text-yellow-600',
+                'success': 'text-green-600',
+                'failed': 'text-red-600',
+                'partial': 'text-orange-600'
+            };
+            
+            const statusText = run.status.charAt(0).toUpperCase() + run.status.slice(1);
+            const progressText = `${run.counts.processed}/${run.counts.total} documents`;
+            
+            // Update or show run details
+            showRunDetails(run);
+        }
+
+        function showRunDetails(run) {
+            currentRunId = run.run_id;
+            const detailsEl = document.getElementById('runDetails');
+            const contentEl = document.getElementById('runDetailsContent');
+            
+            const statusColors = {
+                'queued': 'bg-gray-100',
+                'processing': 'bg-yellow-100',
+                'success': 'bg-green-100',
+                'failed': 'bg-red-100',
+                'partial': 'bg-orange-100'
+            };
+            
+            contentEl.innerHTML = `
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div class="p-4 border rounded ${statusColors[run.status]}">
+                        <div class="text-sm text-gray-600">Status</div>
+                        <div class="font-bold">${run.status.toUpperCase()}</div>
+                    </div>
+                    <div class="p-4 border rounded">
+                        <div class="text-sm text-gray-600">Progress</div>
+                        <div class="font-bold">${run.counts.processed}/${run.counts.total} docs</div>
+                    </div>
+                    <div class="p-4 border rounded">
+                        <div class="text-sm text-gray-600">Provider</div>
+                        <div class="font-bold">${run.provider}</div>
+                    </div>
+                </div>
+                ${run.error ? `<div class="mt-4 p-4 bg-red-100 rounded text-red-700">${run.error}</div>` : ''}
+            `;
+            
+            detailsEl.classList.remove('hidden');
+        }
+
+        async function loadEvents(runId) {
+            try {
+                const response = await axios.get(`${API_URL}/v1/runs/${runId}/events`);
+                const events = response.data.events;
+                
+                const tbody = document.getElementById('eventsTableBody');
+                tbody.innerHTML = '';
+                
+                events.forEach(event => {
+                    const row = tbody.insertRow();
+                    row.innerHTML = `
+                        <td class="px-4 py-2 border-b">${event.number}</td>
+                        <td class="px-4 py-2 border-b">${event.date || 'N/A'}</td>
+                        <td class="px-4 py-2 border-b text-sm">${event.event_particulars}</td>
+                        <td class="px-4 py-2 border-b text-sm">${event.citation || ''}</td>
+                        <td class="px-4 py-2 border-b text-sm">${event.document_reference}</td>
+                    `;
+                });
+                
+                document.getElementById('eventsSection').classList.remove('hidden');
+                currentRunId = runId;
+                
+            } catch (error) {
+                console.error('Load events error:', error);
+                alert('Failed to load events');
+            }
+        }
+
+        async function exportEvents(format) {
+            if (!currentRunId) {
+                alert('No run selected');
+                return;
+            }
+            
+            try {
+                const response = await axios.get(
+                    `${API_URL}/v1/runs/${currentRunId}/export?fmt=${format}`
+                );
+                
+                const downloadUrl = response.data.download_url;
+                
+                // Open download in new window
+                window.open(downloadUrl, '_blank');
+                
+            } catch (error) {
+                console.error('Export error:', error);
+                alert('Failed to export events');
+            }
+        }
+
+        async function viewCase(caseId) {
+            // Placeholder - in production, load runs for this case
+            alert(`View case ${caseId} - Feature coming soon!`);
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,145 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: legal_events_db
+    environment:
+      POSTGRES_DB: legal_events
+      POSTGRES_USER: legal_user
+      POSTGRES_PASSWORD: legal_pass_2024
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U legal_user -d legal_events"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Redis for job queue and caching
+  redis:
+    image: redis:7-alpine
+    container_name: legal_events_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # MinIO (S3-compatible storage)
+  minio:
+    image: minio/minio:latest
+    container_name: legal_events_minio
+    ports:
+      - "9000:9000"     # API port
+      - "9001:9001"     # Console port (web UI)
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin123
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # FastAPI Backend
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: legal_events_api
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://legal_user:legal_pass_2024@postgres:5432/legal_events
+      REDIS_URL: redis://redis:6379
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin123
+      MINIO_BUCKET: legal-documents
+      PYTHONUNBUFFERED: 1
+      # Copy over any existing API keys from .env
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+    volumes:
+      - ./api:/app/api
+      - ./worker:/app/worker
+      - ./core:/app/core  # Mount production extraction pipeline
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    command: >
+      sh -c "
+        echo 'Waiting for database...' &&
+        sleep 5 &&
+        alembic upgrade head &&
+        uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
+      "
+
+  # Background Worker
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    container_name: legal_events_worker
+    environment:
+      DATABASE_URL: postgresql://legal_user:legal_pass_2024@postgres:5432/legal_events
+      REDIS_URL: redis://redis:6379
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin123
+      MINIO_BUCKET: legal-documents
+      PYTHONUNBUFFERED: 1
+      # Copy over any existing API keys
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+    volumes:
+      - ./worker:/app/worker
+      - ./core:/app/core  # Mount production extraction pipeline
+    depends_on:
+      - redis
+      - postgres
+      - minio
+    command: python -m worker.main
+
+  # Simple UI (initially, we'll enhance Flask before moving to SvelteKit)
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: legal_events_ui
+    ports:
+      - "3000:3000"
+    environment:
+      API_URL: http://api:8000
+    depends_on:
+      - api
+    volumes:
+      - ./frontend:/app
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
+
+networks:
+  default:
+    name: legal_events_network

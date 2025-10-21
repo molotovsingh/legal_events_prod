@@ -1,0 +1,20 @@
+# Simple nginx server to serve the HTML frontend
+FROM nginx:alpine
+
+# Copy the HTML file
+COPY frontend/index.html /usr/share/nginx/html/index.html
+
+# Add nginx configuration to handle CORS
+RUN echo 'server { \
+    listen 80; \
+    server_name localhost; \
+    root /usr/share/nginx/html; \
+    index index.html; \
+    \
+    location / { \
+        try_files $uri $uri/ =404; \
+        add_header Access-Control-Allow-Origin *; \
+    } \
+}' > /etc/nginx/conf.d/default.conf
+
+EXPOSE 80
