@@ -89,3 +89,7 @@ Desktop.ini
 # Project specific
 notes/
 scratch/
+
+# Node/npm cache
+.npm-cache/
+

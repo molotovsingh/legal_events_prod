@@ -1,0 +1,2 @@
+- this is a child of the POC that claude code built in the ~/Users/aks/docling_langextract_testing
+- always ask in case of any gaps or clarity ,avoid assuming things that can be easily cleared from user or from researching the internet . refer to the parent POC as well
