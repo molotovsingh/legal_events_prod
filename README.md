@@ -86,15 +86,36 @@ This system uses Docker Compose to orchestrate:
 
 ## 📝 Development Roadmap
 
-This is a gradual improvement process with no fixed timeline:
+This system follows an **iterative improvement approach** with no fixed deadlines:
 
-- **Week 1:** Test system, discover bugs, document issues
-- **Week 2-4:** Fix critical bugs
-- **Week 5-8:** Add production features (monitoring, tests, CI/CD)
-- **Week 9-12:** Polish and documentation
-- **Future:** Hand off to experienced developers when ready
+### Phased Development
 
-See `STATUS.md` (to be created) for current progress.
+- **Phase 1: Repository Setup** ✅ **COMPLETE**
+  - Clean workspace created, code migrated from POC v0.10.1
+  - Docker configuration fixed for production structure
+
+- **Phase 2: Testing & Bug Discovery** 🚧 **CURRENT PHASE**
+  - Start Docker containers, test with sample PDFs
+  - Verify extraction quality vs POC baseline
+  - Document all bugs in GitHub Issues
+
+- **Phase 3: Iterative Fixes** 📋 **NEXT**
+  - Fix discovered bugs one by one
+  - No rush, gradual quality improvement
+
+- **Phase 4: Production Hardening** 📋 **FUTURE**
+  - Add monitoring, tests, CI/CD as needed
+  - Authentication, rate limiting (if required)
+
+- **Phase 5: Documentation** 📋 **ONGOING**
+  - Document features as they stabilize
+  - Add deployment guides when deployment works
+
+- **Phase 6: Handoff** 📋 **FUTURE**
+  - Transfer to experienced developers when production-ready
+  - Timeline: TBD (1-6 months depending on progress)
+
+**See `STATUS.md` for detailed progress tracking and current task checklist.**
 
 ## 🔗 Related Repositories
 
