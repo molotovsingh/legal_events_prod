@@ -9,19 +9,19 @@ echo "
 ╚══════════════════════════════════════════════════════════════╝
 "
 
-# Check if we're in the v2 directory
+# Check if we're in the repo root
 if [ ! -f "docker-compose.yml" ]; then
-    echo "❌ Error: Please run this script from the v2 directory"
-    echo "   cd v2"
+    echo "❌ Error: Please run this script from the repo root directory"
+    echo "   cd legal-events-production"
     echo "   ./quickstart.sh"
     exit 1
 fi
 
 # Step 1: Check for .env file
 echo "📋 Step 1: Checking environment configuration..."
-if [ ! -f "../.env" ]; then
+if [ ! -f "./.env" ]; then
     echo "⚠️  No .env file found. Creating template..."
-    cat > ../.env << EOF
+    cat > ./.env << EOF
 # Legal Events v2 Configuration
 # Add at least ONE of these API keys:
 
@@ -42,7 +42,7 @@ EOF
     echo ""
     echo "⚠️  IMPORTANT: You must add at least one API key!"
     echo ""
-    echo "   1. Edit the file: ../.env"
+    echo "   1. Edit the file: .env"
     echo "   2. Add your API key(s)"
     echo "   3. Run this script again"
     echo ""
@@ -50,16 +50,16 @@ EOF
     echo ""
     exit 1
 else
-    # Check if any API key is set
-    if grep -q "API_KEY=." ../.env; then
+    # Check if any LLM API key is set (excludes admin/JWT keys)
+    if grep -Eq '^(OPENROUTER|OPENAI|ANTHROPIC|GEMINI|DEEPSEEK)_API_KEY=.' ./.env; then
         echo "✅ Environment file found with API keys"
     else
-        echo "⚠️  Warning: No API keys detected in ../.env"
+        echo "⚠️  Warning: No LLM API keys detected in .env"
         echo "   The system may not work without at least one LLM API key!"
         read -p "Continue anyway? (y/N) " -n 1 -r
         echo
         if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            echo "Please add an API key to ../.env and try again"
+            echo "Please add an API key to .env and try again"
             exit 1
         fi
     fi

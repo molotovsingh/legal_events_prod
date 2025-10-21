@@ -47,7 +47,12 @@ legal-events-production/
 
 **Prerequisites:**
 - Docker and Docker Compose installed
-- At least one LLM API key (OPENROUTER_API_KEY recommended)
+- **At least ONE LLM API key** (choose one based on your preference):
+  - `OPENROUTER_API_KEY` (recommended - unified access to multiple models)
+  - `ANTHROPIC_API_KEY` (for Claude models only)
+  - `OPENAI_API_KEY` (for GPT models only)
+  - `GEMINI_API_KEY` (for Gemini models only)
+  - `DEEPSEEK_API_KEY` (for DeepSeek models only)
 
 **Setup:**
 
@@ -55,8 +60,9 @@ legal-events-production/
 # 1. Copy environment file
 cp .env.example .env
 
-# 2. Edit .env and add your API keys
-#    At minimum: OPENROUTER_API_KEY=your_key_here
+# 2. Edit .env and add at least ONE API key
+#    Recommended: OPENROUTER_API_KEY=your_key_here
+#    Alternative: Choose ANTHROPIC, OPENAI, GEMINI, or DEEPSEEK
 
 # 3. Start services
 ./start.sh start

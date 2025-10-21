@@ -66,11 +66,11 @@ case $COMMAND in
         echo -e "${YELLOW}🚀 Starting Legal Events v2...${NC}"
         echo ""
         
-        # Check if .env exists in parent directory
-        if [ ! -f "../.env" ]; then
-            echo -e "${YELLOW}⚠️  No .env file found in parent directory${NC}"
+        # Check if .env exists in repo root
+        if [ ! -f "./.env" ]; then
+            echo -e "${YELLOW}⚠️  No .env file found in repo root${NC}"
             echo "Creating template .env file..."
-            cat > ../.env.template << EOF
+            cat > ./.env.template << EOF
 # API Keys (add your keys here)
 OPENROUTER_API_KEY=your_key_here
 ANTHROPIC_API_KEY=your_key_here
@@ -87,7 +87,7 @@ JWT_SECRET_KEY=your-secret-key-change-in-production
 API_KEY_ADMIN=admin-key-change-me
 API_KEY_USER=user-key-change-me
 EOF
-            echo -e "${YELLOW}Please copy ../.env.template to ../.env and add your API keys${NC}"
+            echo -e "${YELLOW}Please copy .env.template to .env and add your API keys${NC}"
             echo ""
         fi
         
