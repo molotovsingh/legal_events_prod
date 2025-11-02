@@ -7,8 +7,8 @@ import os
 import logging
 from typing import Optional, Dict, Any
 import redis
-from rq import Queue, Job, Worker
-from rq.job import JobStatus
+from rq import Queue, Worker
+from rq.job import Job, JobStatus
 from datetime import timedelta
 
 logger = logging.getLogger(__name__)

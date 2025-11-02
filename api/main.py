@@ -20,7 +20,8 @@ from .models import *
 from .schemas import *
 from .storage import MinioStorage
 from .queue import enqueue_job
-from .auth import get_current_user, create_access_token
+# TODO: Re-enable auth once PyJWT is installed
+# from .auth import get_current_user, create_access_token
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
