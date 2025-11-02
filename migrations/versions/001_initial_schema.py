@@ -17,12 +17,42 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # Create enums
-    op.execute("CREATE TYPE userrole AS ENUM ('admin', 'case_manager', 'reviewer')")
-    op.execute("CREATE TYPE runstatus AS ENUM ('queued', 'processing', 'partial', 'success', 'failed')")
-    op.execute("CREATE TYPE documentstatus AS ENUM ('pending', 'processing', 'success', 'failed')")
-    op.execute("CREATE TYPE clientstatus AS ENUM ('active', 'inactive', 'suspended')")
-    op.execute("CREATE TYPE casestatus AS ENUM ('open', 'closed', 'archived')")
+    # Create enums (check if exists first to avoid errors)
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE userrole AS ENUM ('admin', 'case_manager', 'reviewer');
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
+    """)
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE runstatus AS ENUM ('queued', 'processing', 'partial', 'success', 'failed');
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
+    """)
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE documentstatus AS ENUM ('pending', 'processing', 'success', 'failed');
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
+    """)
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE clientstatus AS ENUM ('active', 'inactive', 'suspended');
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
+    """)
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE casestatus AS ENUM ('open', 'closed', 'archived');
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
+    """)
     
     # Create clients table
     op.create_table('clients',

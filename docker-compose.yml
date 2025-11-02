@@ -84,13 +84,31 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
-    command: >
-      sh -c "
-        echo 'Waiting for database...' &&
-        sleep 5 &&
-        alembic upgrade head &&
+    command:
+      - sh
+      - -c
+      - |
+        echo 'Waiting for database...'
+        sleep 5
+        python3 << 'PYEOF'
+        import psycopg2
+        conn = psycopg2.connect('postgresql://legal_user:legal_pass_2024@postgres:5432/legal_events')
+        cur = conn.cursor()
+        sqls = [
+          "DO $$ BEGIN CREATE TYPE userrole AS ENUM ('admin', 'case_manager', 'reviewer'); EXCEPTION WHEN duplicate_object THEN null; END $$;",
+          "DO $$ BEGIN CREATE TYPE runstatus AS ENUM ('queued', 'processing', 'partial', 'success', 'failed'); EXCEPTION WHEN duplicate_object THEN null; END $$;",
+          "DO $$ BEGIN CREATE TYPE documentstatus AS ENUM ('pending', 'processing', 'success', 'failed'); EXCEPTION WHEN duplicate_object THEN null; END $$;",
+          "DO $$ BEGIN CREATE TYPE clientstatus AS ENUM ('active', 'inactive', 'suspended'); EXCEPTION WHEN duplicate_object THEN null; END $$;",
+          "DO $$ BEGIN CREATE TYPE casestatus AS ENUM ('open', 'closed', 'archived'); EXCEPTION WHEN duplicate_object THEN null; END $$;"
+        ]
+        for sql in sqls:
+          cur.execute(sql)
+        conn.commit()
+        cur.close()
+        conn.close()
+        PYEOF
+        alembic upgrade head
         uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
-      "
 
   # Background Worker
   worker:
