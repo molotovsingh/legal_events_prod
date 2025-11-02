@@ -93,11 +93,17 @@ services:
         python3 << 'PYEOF'
         import psycopg2
         import sys
+        import os
 
         conn = None
         cur = None
         try:
-          conn = psycopg2.connect('postgresql://legal_user:legal_pass_2024@postgres:5432/legal_events')
+          # Use DATABASE_URL from environment instead of hardcoded connection
+          db_url = os.environ.get('DATABASE_URL')
+          if not db_url:
+            print("ERROR: DATABASE_URL environment variable not set", file=sys.stderr)
+            sys.exit(1)
+          conn = psycopg2.connect(db_url)
           cur = conn.cursor()
           sqls = [
             "DO $$$$ BEGIN CREATE TYPE userrole AS ENUM ('admin', 'case_manager', 'reviewer'); EXCEPTION WHEN duplicate_object THEN null; END $$$$;",

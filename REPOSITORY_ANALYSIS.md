@@ -1,8 +1,8 @@
 # Comprehensive Repository Analysis
-**Date**: October 21, 2025
+**Date**: October 21, 2025 | **Last Updated**: November 2, 2025
 **Repositories Analyzed**:
-1. Parent POC: `/Users/aks/docling_langextract_testing` (v0.2.0)
-2. Production Fork: `/Users/aks/legal-events-production` (Phase 2)
+1. Parent POC: `../docling_langextract_testing` (v0.2.0 - Proof of Concept)
+2. Production Fork: `./` (Phase 2 - legal-events-production)
 
 ---
 
@@ -45,7 +45,7 @@ This document provides a comprehensive analysis of both the parent POC (Proof of
 
 ### Overview
 
-**Location**: `/Users/aks/docling_langextract_testing`
+**Location**: `$POC_DIR`
 **Version**: 0.2.0 (October 13, 2025)
 **Status**: Production-ready POC
 **Codebase**: 70 Python files in `src/`, 57 in `scripts/`, ~13,000+ LoC
@@ -219,7 +219,7 @@ docling_langextract_testing/
 
 ### Overview
 
-**Location**: `/Users/aks/legal-events-production`
+**Location**: `$REPO_ROOT`
 **Status**: Phase 2 - Testing & Bug Discovery (pre-alpha)
 **Forked From**: docling_langextract_testing v0.10.1
 **Codebase**: ~54 Python files, ~13,000+ LoC
@@ -390,20 +390,20 @@ GET    /v1/models                # List available models with pricing
 ### Infrastructure
 
 **Database**: PostgreSQL 16-alpine
-- Host: localhost:5432
-- Database: legal_events
-- User: legal_user
-- Password: legal_pass_2024
+- Host: ${DB_HOST:-localhost}:${DB_PORT:-5432}
+- Database: ${DB_NAME:-legal_events}
+- User: ${DB_USER:-legal_user}
+- Password: ${DB_PASSWORD} (see .env.example)
 
 **Cache/Queue**: Redis 7-alpine
-- Host: localhost:6379
+- Host: ${REDIS_HOST:-localhost}:${REDIS_PORT:-6379}
 - Job queues: high, default, low priority
 - Worker restarts after 100 jobs
 
 **Storage**: MinIO (S3-compatible)
-- API: localhost:9000
+- API: ${MINIO_ENDPOINT:-localhost:9000}
 - Console: localhost:9001
-- Credentials: minioadmin / minioadmin123
+- Credentials: ${MINIO_ACCESS_KEY} / ${MINIO_SECRET_KEY} (see .env.example)
 - Bucket: legal-documents
 - Stores: PDFs, processed documents, export artifacts
 
@@ -775,63 +775,63 @@ Frontend:     http://localhost:3000
 ### Parent POC Files
 
 **Documentation**:
-- `/Users/aks/docling_langextract_testing/README.md` - 47KB comprehensive guide
-- `/Users/aks/docling_langextract_testing/CLAUDE.md` - 31KB technical specifications
-- `/Users/aks/docling_langextract_testing/CHANGELOG.md` - Version history
-- `/Users/aks/docling_langextract_testing/docs/adr/ADR-001-pluggable-extractors.md` - Architecture decisions
-- `/Users/aks/docling_langextract_testing/docs/benchmarks/2025-10-03-manual-comparison.md` - 6-provider benchmark
-- `/Users/aks/docling_langextract_testing/docs/benchmarks/2025-10-03-ocr-comparison.md` - OCR engine war
+- `$POC_DIR/README.md` - 47KB comprehensive guide
+- `$POC_DIR/CLAUDE.md` - 31KB technical specifications
+- `$POC_DIR/CHANGELOG.md` - Version history
+- `$POC_DIR/docs/adr/ADR-001-pluggable-extractors.md` - Architecture decisions
+- `$POC_DIR/docs/benchmarks/2025-10-03-manual-comparison.md` - 6-provider benchmark
+- `$POC_DIR/docs/benchmarks/2025-10-03-ocr-comparison.md` - OCR engine war
 
 **Core Pipeline**:
-- `/Users/aks/docling_langextract_testing/src/core/legal_pipeline_refactored.py` - Main orchestrator
-- `/Users/aks/docling_langextract_testing/src/core/extractor_factory.py` - Provider registry
-- `/Users/aks/docling_langextract_testing/src/core/document_processor.py` - Docling wrapper
-- `/Users/aks/docling_langextract_testing/src/core/config.py` - Configuration
-- `/Users/aks/docling_langextract_testing/src/core/constants.py` - Prompts & headers
+- `$POC_DIR/src/core/legal_pipeline_refactored.py` - Main orchestrator
+- `$POC_DIR/src/core/extractor_factory.py` - Provider registry
+- `$POC_DIR/src/core/document_processor.py` - Docling wrapper
+- `$POC_DIR/src/core/config.py` - Configuration
+- `$POC_DIR/src/core/constants.py` - Prompts & headers
 
 **Configuration**:
-- `/Users/aks/docling_langextract_testing/.env.example` - 11KB environment template
-- `/Users/aks/docling_langextract_testing/pyproject.toml` - Dependencies
+- `$POC_DIR/.env.example` - 11KB environment template
+- `$POC_DIR/pyproject.toml` - Dependencies
 
 **UI Applications**:
-- `/Users/aks/docling_langextract_testing/app.py` - 60KB Streamlit app
-- `/Users/aks/docling_langextract_testing/flask_app.py` - 29KB Flask app
-- `/Users/aks/docling_langextract_testing/analytics_dashboard.py` - 22KB analytics UI
+- `$POC_DIR/app.py` - 60KB Streamlit app
+- `$POC_DIR/flask_app.py` - 29KB Flask app
+- `$POC_DIR/analytics_dashboard.py` - 22KB analytics UI
 
 ### Production Fork Files
 
 **Documentation**:
-- `/Users/aks/legal-events-production/README.md` - Project overview
-- `/Users/aks/legal-events-production/STATUS.md` - Phase tracking
-- `/Users/aks/legal-events-production/REPOSITORY_ANALYSIS.md` - This file
+- `$REPO_ROOT/README.md` - Project overview
+- `$REPO_ROOT/STATUS.md` - Phase tracking
+- `$REPO_ROOT/REPOSITORY_ANALYSIS.md` - This file
 
 **Core Pipeline** (migrated from POC):
-- `/Users/aks/legal-events-production/core/legal_pipeline_refactored.py`
-- `/Users/aks/legal-events-production/core/extractor_factory.py`
-- `/Users/aks/legal-events-production/core/document_processor.py`
-- `/Users/aks/legal-events-production/core/config.py`
-- `/Users/aks/legal-events-production/core/constants.py`
+- `$REPO_ROOT/core/legal_pipeline_refactored.py`
+- `$REPO_ROOT/core/extractor_factory.py`
+- `$REPO_ROOT/core/document_processor.py`
+- `$REPO_ROOT/core/config.py`
+- `$REPO_ROOT/core/constants.py`
 
 **API & Backend**:
-- `/Users/aks/legal-events-production/api/main.py` - FastAPI application
-- `/Users/aks/legal-events-production/api/models.py` - SQLAlchemy models
-- `/Users/aks/legal-events-production/api/schemas.py` - Pydantic schemas
-- `/Users/aks/legal-events-production/worker/tasks.py` - Background jobs
+- `$REPO_ROOT/api/main.py` - FastAPI application
+- `$REPO_ROOT/api/models.py` - SQLAlchemy models
+- `$REPO_ROOT/api/schemas.py` - Pydantic schemas
+- `$REPO_ROOT/worker/tasks.py` - Background jobs
 
 **Infrastructure**:
-- `/Users/aks/legal-events-production/docker-compose.yml` - Service orchestration
-- `/Users/aks/legal-events-production/Dockerfile.api` - API container
-- `/Users/aks/legal-events-production/Dockerfile.worker` - Worker container
-- `/Users/aks/legal-events-production/start.sh` - Management script
-- `/Users/aks/legal-events-production/alembic.ini` - Migration config
+- `$REPO_ROOT/docker-compose.yml` - Service orchestration
+- `$REPO_ROOT/Dockerfile.api` - API container
+- `$REPO_ROOT/Dockerfile.worker` - Worker container
+- `$REPO_ROOT/start.sh` - Management script
+- `$REPO_ROOT/alembic.ini` - Migration config
 
 **Configuration**:
-- `/Users/aks/legal-events-production/.env.example` - Environment template
-- `/Users/aks/legal-events-production/requirements.txt` - Dependencies
+- `$REPO_ROOT/.env.example` - Environment template
+- `$REPO_ROOT/requirements.txt` - Dependencies
 
 **Testing**:
-- `/Users/aks/legal-events-production/test_system.py` - Integration tests
-- `/Users/aks/legal-events-production/test_documents/` - Sample PDFs/emails
+- `$REPO_ROOT/test_system.py` - Integration tests
+- `$REPO_ROOT/test_documents/` - Sample PDFs/emails
 
 ---
 
