@@ -6,7 +6,7 @@ Runs RQ worker to process document extraction jobs
 import os
 import logging
 import sys
-from rq import Worker, Queue, Connection
+from rq import Worker, Queue
 import redis
 
 # Add parent directory to path for imports
@@ -40,20 +40,19 @@ def main():
     ]
     
     logger.info(f"📋 Listening to queues: {[q.name for q in queues]}")
-    
-    # Create and start worker
-    with Connection(redis_conn):
-        worker = Worker(
-            queues,
-            name="legal-events-worker",
-            log_job_description=True,
-            max_jobs=100,  # Process 100 jobs before restarting
-        )
-        
-        logger.info("✅ Worker ready and listening for jobs...")
-        
-        # Start working
-        worker.work(with_scheduler=True)
+
+    # Create and start worker (Connection context manager is deprecated in RQ)
+    worker = Worker(
+        queues,
+        connection=redis_conn,
+        name="legal-events-worker",
+        log_job_description=True,
+    )
+
+    logger.info("✅ Worker ready and listening for jobs...")
+
+    # Start working
+    worker.work(with_scheduler=True)
 
 
 if __name__ == "__main__":

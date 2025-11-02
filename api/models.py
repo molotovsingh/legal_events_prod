@@ -165,9 +165,9 @@ class Run(Base):
     
     # Error tracking
     error = Column(Text)
-    
-    # Metadata
-    metadata = Column(JSON)  # For additional tracking data
+
+    # Metadata (renamed from 'metadata' to avoid SQLAlchemy reserved attribute)
+    run_metadata = Column(JSON)  # For additional tracking data
     
     # Relationships
     case = relationship("Case", back_populates="runs")
