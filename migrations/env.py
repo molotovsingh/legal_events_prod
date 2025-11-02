@@ -39,6 +39,8 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        # Don't auto-create types in offline mode either (consistent with online mode)
+        include_object=lambda obj, name, type_, reflected, compare_to: type_ != "type"
     )
 
     with context.begin_transaction():
