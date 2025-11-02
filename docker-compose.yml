@@ -92,20 +92,38 @@ services:
         sleep 5
         python3 << 'PYEOF'
         import psycopg2
-        conn = psycopg2.connect('postgresql://legal_user:legal_pass_2024@postgres:5432/legal_events')
-        cur = conn.cursor()
-        sqls = [
-          "DO $$ BEGIN CREATE TYPE userrole AS ENUM ('admin', 'case_manager', 'reviewer'); EXCEPTION WHEN duplicate_object THEN null; END $$;",
-          "DO $$ BEGIN CREATE TYPE runstatus AS ENUM ('queued', 'processing', 'partial', 'success', 'failed'); EXCEPTION WHEN duplicate_object THEN null; END $$;",
-          "DO $$ BEGIN CREATE TYPE documentstatus AS ENUM ('pending', 'processing', 'success', 'failed'); EXCEPTION WHEN duplicate_object THEN null; END $$;",
-          "DO $$ BEGIN CREATE TYPE clientstatus AS ENUM ('active', 'inactive', 'suspended'); EXCEPTION WHEN duplicate_object THEN null; END $$;",
-          "DO $$ BEGIN CREATE TYPE casestatus AS ENUM ('open', 'closed', 'archived'); EXCEPTION WHEN duplicate_object THEN null; END $$;"
-        ]
-        for sql in sqls:
-          cur.execute(sql)
-        conn.commit()
-        cur.close()
-        conn.close()
+        import sys
+
+        conn = None
+        cur = None
+        try:
+          conn = psycopg2.connect('postgresql://legal_user:legal_pass_2024@postgres:5432/legal_events')
+          cur = conn.cursor()
+          sqls = [
+            "DO $$$$ BEGIN CREATE TYPE userrole AS ENUM ('admin', 'case_manager', 'reviewer'); EXCEPTION WHEN duplicate_object THEN null; END $$$$;",
+            "DO $$$$ BEGIN CREATE TYPE runstatus AS ENUM ('queued', 'processing', 'partial', 'success', 'failed'); EXCEPTION WHEN duplicate_object THEN null; END $$$$;",
+            "DO $$$$ BEGIN CREATE TYPE documentstatus AS ENUM ('pending', 'processing', 'success', 'failed'); EXCEPTION WHEN duplicate_object THEN null; END $$$$;",
+            "DO $$$$ BEGIN CREATE TYPE clientstatus AS ENUM ('active', 'inactive', 'suspended'); EXCEPTION WHEN duplicate_object THEN null; END $$$$;",
+            "DO $$$$ BEGIN CREATE TYPE casestatus AS ENUM ('open', 'closed', 'archived'); EXCEPTION WHEN duplicate_object THEN null; END $$$$;"
+          ]
+          for sql in sqls:
+            cur.execute(sql)
+          conn.commit()
+          print("Successfully created PostgreSQL ENUM types")
+        except psycopg2.OperationalError as e:
+          print(f"Database connection error: {e}", file=sys.stderr)
+          sys.exit(1)
+        except psycopg2.Error as e:
+          print(f"SQL execution error: {e}", file=sys.stderr)
+          sys.exit(1)
+        except Exception as e:
+          print(f"Unexpected error during ENUM creation: {e}", file=sys.stderr)
+          sys.exit(1)
+        finally:
+          if cur:
+            cur.close()
+          if conn:
+            conn.close()
         PYEOF
         alembic upgrade head
         uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
