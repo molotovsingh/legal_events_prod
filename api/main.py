@@ -22,6 +22,12 @@ from .storage import MinioStorage
 from .queue import enqueue_job
 # TODO: Re-enable auth once PyJWT is installed
 # from .auth import get_current_user, create_access_token
+#
+# SECURITY WARNING: Authentication is currently disabled!
+# This is only acceptable for local development/testing.
+# DO NOT deploy to production without enabling authentication.
+# Install PyJWT: pip install "python-jose[cryptography]"
+# Then uncomment the auth imports above.
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

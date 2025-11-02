@@ -1,2 +1,4 @@
-- this is a child of the POC that claude code built in the ~/Users/aks/docling_langextract_testing
-- always ask in case of any gaps or clarity ,avoid assuming things that can be easily cleared from user or from researching the internet . refer to the parent POC as well
+- this is a child of the POC (proof of concept) located in the docling_langextract_testing directory (v0.10.1)
+  - Set POC_DIR environment variable to reference the parent POC: `export POC_DIR=~/docling_langextract_testing`
+  - Or configure the path in your development environment
+- always ask in case of any gaps or clarity, avoid assuming things that can be easily cleared from user or from researching the internet. Refer to the parent POC as well
