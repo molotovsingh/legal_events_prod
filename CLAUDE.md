@@ -2,6 +2,7 @@
   - Set POC_DIR environment variable to reference the parent POC: `export POC_DIR=~/docling_langextract_testing`
   - Or configure the path in your development environment
 - always ask in case of any gaps or clarity, avoid assuming things that can be easily cleared from user or from researching the internet. Refer to the parent POC as well
+- **CRITICAL:** For ANY external library/tool/service issues: WebSearch FIRST for latest documentation/API before attempting fixes. Do not trial-and-error with external deps.
 
 ---
 
