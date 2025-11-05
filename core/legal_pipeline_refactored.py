@@ -19,12 +19,22 @@ try:
 except ImportError:
     STREAMLIT_AVAILABLE = False
 
-from ..utils.file_handler import FileHandler
-from ..core.table_formatter import TableFormatter
-from ..core.constants import FIVE_COLUMN_HEADERS, DEFAULT_NO_DATE
-from ..core.extractor_factory import create_default_extractors, validate_extractors
-from ..core.interfaces import DocumentExtractor, EventExtractor
-from ..core.pipeline_metadata import PipelineMetadata
+try:
+    # Try relative imports (works when run as part of a package)
+    from ..utils.file_handler import FileHandler
+    from .table_formatter import TableFormatter
+    from .constants import FIVE_COLUMN_HEADERS, DEFAULT_NO_DATE
+    from .extractor_factory import create_default_extractors, validate_extractors
+    from .interfaces import DocumentExtractor, EventExtractor
+    from .pipeline_metadata import PipelineMetadata
+except ImportError:
+    # Fall back to absolute imports (works when utils/core are in Python path)
+    from utils.file_handler import FileHandler
+    from core.table_formatter import TableFormatter
+    from core.constants import FIVE_COLUMN_HEADERS, DEFAULT_NO_DATE
+    from core.extractor_factory import create_default_extractors, validate_extractors
+    from core.interfaces import DocumentExtractor, EventExtractor
+    from core.pipeline_metadata import PipelineMetadata
 
 logger = logging.getLogger(__name__)
 
