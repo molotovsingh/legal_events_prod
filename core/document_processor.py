@@ -24,7 +24,13 @@ try:
     from docling.pipeline.standard_pdf_pipeline import StandardPdfPipeline
 except ImportError:  # pragma: no cover
     StandardPdfPipeline = None  # type: ignore
-import extract_msg
+
+try:
+    import extract_msg
+    EXTRACT_MSG_AVAILABLE = True
+except ImportError:
+    EXTRACT_MSG_AVAILABLE = False
+    extract_msg = None
 
 from .config import DoclingConfig, load_config
 from .email_parser import parse_email_file, format_email_as_text
@@ -289,9 +295,21 @@ class DocumentProcessor:
                 # Email files use specialized parsers
                 if file_type == 'msg':
                     # Outlook .msg files
-                    msg = extract_msg.openMsg(file_path)
-                    text = f"Subject: {msg.subject}\nFrom: {msg.sender}\nDate: {msg.date}\n\n{msg.body}"
-                    extraction_method = "extract_msg"
+                    if EXTRACT_MSG_AVAILABLE:
+                        try:
+                            msg = extract_msg.openMsg(file_path)
+                            text = f"Subject: {msg.subject}\nFrom: {msg.sender}\nDate: {msg.date}\n\n{msg.body}"
+                            extraction_method = "extract_msg"
+                        except Exception as e:
+                            logger.warning(f"⚠️ extract_msg failed for {file_path.name}: {e}, falling back to raw text")
+                            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                                text = f.read()
+                            extraction_method = "raw_text_fallback"
+                    else:
+                        logger.warning(f"⚠️ extract_msg not available for {file_path.name}, falling back to raw text")
+                        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                            text = f.read()
+                        extraction_method = "raw_text_fallback"
                 else:
                     # .eml files - use new email parser
                     try:

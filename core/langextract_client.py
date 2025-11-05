@@ -12,6 +12,7 @@ try:
     LANGEXTRACT_AVAILABLE = True
 except ImportError:
     LANGEXTRACT_AVAILABLE = False
+    lx = None  # Set to None so references don't fail at import time
 
 from .constants import REQUIRED_ENV_VARS, DEFAULT_MODEL, LEGAL_EVENTS_PROMPT
 from .examples import get_legal_events_examples
@@ -50,7 +51,7 @@ class LangExtractClient:
 
         logger.info("✅ GEMINI_API_KEY loaded successfully")
 
-    def _create_shared_examples(self) -> List[lx.data.ExampleData]:
+    def _create_shared_examples(self) -> List[Any]:
         """
         Load shared example data from external module
 
@@ -74,7 +75,7 @@ class LangExtractClient:
     def extract_with_prompt(self,
                            text: str,
                            prompt_description: str,
-                           custom_examples: Optional[List[lx.data.ExampleData]] = None) -> Optional[Any]:
+                           custom_examples: Optional[List[Any]] = None) -> Optional[Any]:
         """
         Execute LangExtract with shared configuration
 
