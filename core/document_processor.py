@@ -10,9 +10,9 @@ from docling.datamodel.pipeline_options import (
     ConvertPipelineOptions,
     PdfPipelineOptions,
     TableStructureOptions,
-    AcceleratorOptions,
     TableFormerMode
 )
+from docling.datamodel.accelerator_options import AcceleratorOptions
 
 from docling.datamodel.base_models import InputFormat
 from docling.backend.docling_parse_v2_backend import DoclingParseV2DocumentBackend

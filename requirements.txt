@@ -31,7 +31,7 @@ numpy<2
 
 # Existing Pipeline Dependencies
 # (These are needed to run the extraction pipeline)
-docling==0.16.0
+docling==2.60.1
 anthropic>=0.40.0
 openai>=1.0.0
 google-generativeai>=0.8.0
