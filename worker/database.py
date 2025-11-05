@@ -2,19 +2,19 @@
 Database configuration and session management for Worker service
 
 This module provides worker-owned database access.
-It imports the shared models from api.models (schema contract only).
-No other api business logic is imported, maintaining service boundaries.
+Maintains service boundaries by not importing api business logic.
 """
 
 import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.pool import NullPool
+from sqlalchemy.ext.declarative import declarative_base
 import logging
 
-# Import Base and models from api.models (schema contract - safe for sharing)
-# This maintains service boundaries: we only import the schema definition, not api logic
-from api.models import Base
+# Create our own Base (worker-owned) instead of importing from api
+# This avoids circular imports and maintains service boundaries
+Base = declarative_base()
 
 logger = logging.getLogger(__name__)
 
