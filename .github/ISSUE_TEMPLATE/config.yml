@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Bug Workflow Constitution
+    url: https://github.com/<owner>/<repo>/blob/main/bug_reports/BUG_WORKFLOW_CONSTITUTION.md
+    about: Read our one-page flow and guardrails before filing.

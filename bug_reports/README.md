@@ -3,6 +3,10 @@
 - Purpose: Track investigation notes and actionable defects found during testing and integration.
 - Scope: Repository-wide issues impacting correctness, reliability, or operability.
 
+See also:
+- Bug Workflow Constitution: `bug_reports/BUG_WORKFLOW_CONSTITUTION.md`
+- Contributor Guide: `CONTRIBUTING.md`
+
 ## Naming Convention
 - Filename pattern: `BUG_REPORT_YYYYMMDDTHHMMSSZ.md`
 - Timezone: UTC (Zulu)
