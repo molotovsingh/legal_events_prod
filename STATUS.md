@@ -1,6 +1,6 @@
 # System Status
 
-**Last Updated:** 2025-11-02
+**Last Updated:** 2025-11-05
 **Current Phase:** Phase 2 - Testing & Bug Discovery (IN PROGRESS)
 
 ---
@@ -164,11 +164,84 @@
 
 ### 🐛 ACTIVE ISSUES
 
-*No critical blockers at this time. Minor issues being tracked and fixed as discovered during Phase 2 testing.*
+**Phase 2 Testing Results (2025-11-05):**
+
+#### 1. ❌ Worker Import Chain Issues (CRITICAL BLOCKER)
+- **Location:** worker/main.py → worker/tasks.py → core/legal_pipeline_refactored.py
+- **Issue:** Module import chain fails due to relative import paths and missing dependencies
+- **Root Causes:**
+  - core/legal_pipeline_refactored.py uses relative imports (`from ..utils.file_handler`) that fail in worker container
+  - utils/ directory was missing from production repo (only in POC)
+  - Docker container layer caching prevents hot-reloading of copied files
+  - fitz (PyMuPDF) import errors when core/docling_adapter.py loads
+- **Status:** PARTIALLY FIXED
+  - ✅ Added utils/ directory from POC
+  - ✅ Added try-except import fallback in legal_pipeline_refactored.py
+  - ❌ Worker still fails to start due to layer/dependency resolution
+  - 🔧 Requires: Container rebuild with clean layer cache
+- **Severity:** CRITICAL - Blocks all document processing jobs
+- **Action Items:**
+  - [ ] Rebuild worker container with --no-cache flag
+  - [ ] Verify all dependencies (fitz, numpy, pandas, etc.) are present
+  - [ ] Test RQ job import resolution with fresh container
+
+#### 2. ❌ RQ Job Enqueueing Import Format
+- **Location:** api/queue.py:51-55
+- **Issue:** RQ string-based function references `"worker.tasks.process_run"` fail with "Invalid attribute name"
+- **Root Cause:** RQ's import_attribute() cannot resolve the string path due to module structure
+- **Status:** PARTIAL FIX
+  - ✅ Changed from direct imports to string references to avoid circular imports
+  - ❌ String references still don't resolve in worker context
+- **Severity:** CRITICAL - Prevents job execution
+- **Action Items:**
+  - [ ] Verify module path is accessible to worker
+  - [ ] Consider using absolute imports with proper sys.path setup
+  - [ ] Test with simplified job function
+
+#### 3. ✅ FIXED - Missing FIVE_COLUMN_HEADERS Import
+- **Location:** api/main.py:498
+- **Status:** ✅ FIXED (v0.1.3)
+- **Fix Applied:** Added `from core.constants import FIVE_COLUMN_HEADERS` to imports
+- **Verification:** Tested export endpoint definition
+
+#### 4. ✅ FIXED - SQLAlchemy metadata Attribute Conflict
+- **Location:** worker/tasks.py:195
+- **Status:** ✅ FIXED (v0.1.3)
+- **Fix Applied:** Changed `run.metadata` to `run.run_metadata` (models.py uses run_metadata)
+- **Verification:** Code syntax validated
+
+#### 5. ✅ FIXED - Duplicate python-multipart Dependency
+- **Location:** requirements.txt:7, requirements.txt:42
+- **Status:** ✅ FIXED (v0.1.3)
+- **Fix Applied:** Removed duplicate entry
+- **Verification:** Single instance now present
+
+#### 6. ⏳ Document Upload/Processing Flow (INCOMPLETE)
+- **Issue:** Presigned URL hostnames (minio:9000) not accessible from host machine
+- **Status:** PARTIAL - Upload flow works within Docker network
+- **Current State:**
+  - Can generate presigned URLs for file uploads
+  - MinIO bucket accessible via docker exec and internal mc client
+  - Presigned URLs use internal hostname (minio:9000) - fails when modified
+- **Severity:** MEDIUM - Affects external file upload mechanisms
+- **Action Items:**
+  - [ ] Update presigned URL generation to use configurable hostname
+  - [ ] Support both internal (minio:9000) and external (localhost:9000) URLs
+  - [ ] Test with actual file uploads from client
 
 ---
 
 ## 📝 Recent Changes
+
+- **2025-11-05 (Latest):** Phase 2 Testing - API-First Approach
+  - ✅ Fixed CodeRabbit issues (v0.1.3): FIVE_COLUMN_HEADERS import, run_metadata, duplicate dependency
+  - ✅ Added utils/ directory from POC for import compatibility
+  - ✅ Updated legal_pipeline_refactored.py with try-except import fallback
+  - ✅ Fixed worker/__init__.py to properly expose tasks module
+  - 📋 Shifted testing approach: API-first with log capture instead of manual Docker operations
+  - 🔍 Identified critical blocker: Worker module import chain needs container rebuild
+  - 📊 Test Data: 72 ICC arbitration case documents available for testing
+  - ⏱️ Next: Rebuild worker container and test API endpoints with actual document processing
 
 - **2025-11-02:** Phase 2 testing resumed - system fully operational
   - ✅ Resolved disk space blocker - freed additional space
