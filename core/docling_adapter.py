@@ -7,7 +7,12 @@ import logging
 from pathlib import Path
 from typing import List
 
-import fitz  # PyMuPDF
+try:
+    import fitz  # PyMuPDF
+    FITZ_AVAILABLE = True
+except ImportError:
+    FITZ_AVAILABLE = False
+    fitz = None
 
 from .interfaces import DocumentExtractor, ExtractedDocument
 from .document_processor import DocumentProcessor
