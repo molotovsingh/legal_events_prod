@@ -192,7 +192,7 @@ def process_run(run_id: int, provider: str = "openrouter", model: str = None) ->
         run.cost_usd = estimated_cost
         
         # Add metadata
-        run.metadata = {
+        run.run_metadata = {
             "total_documents": total_docs,
             "processed": processed,
             "failed": failed,

@@ -45,15 +45,14 @@ def enqueue_job(
         queue = QUEUES.get(queue_name, QUEUES["default"])
         
         # Map function names to actual functions
+        # Note: Using function names as strings to avoid import issues
+        # The worker will resolve these at execution time
         if func_name == "process_run":
-            from ..worker.tasks import process_run
-            job = queue.enqueue(process_run, **kwargs)
+            job = queue.enqueue("worker.tasks.process_run", **kwargs)
         elif func_name == "process_document":
-            from ..worker.tasks import process_document
-            job = queue.enqueue(process_document, **kwargs)
+            job = queue.enqueue("worker.tasks.process_document", **kwargs)
         elif func_name == "generate_artifacts":
-            from ..worker.tasks import generate_artifacts
-            job = queue.enqueue(generate_artifacts, **kwargs)
+            job = queue.enqueue("worker.tasks.generate_artifacts", **kwargs)
         else:
             raise ValueError(f"Unknown function: {func_name}")
         

@@ -58,12 +58,12 @@ class CaseStatus(enum.Enum):
 class Client(Base):
     """Client (organization) that owns cases"""
     __tablename__ = "clients"
-    
+
     id = Column(Integer, primary_key=True)
     name = Column(String(255), nullable=False)
     reference_code = Column(String(100), unique=True)
     notes = Column(Text)
-    status = Column(Enum(ClientStatus), default=ClientStatus.ACTIVE)
+    status = Column(Enum(ClientStatus, values_callable=lambda x: [e.value for e in x], native_enum=True), default=ClientStatus.ACTIVE)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
     
@@ -83,7 +83,7 @@ class Case(Base):
     name = Column(String(255), nullable=False)
     description = Column(Text)
     retention_days = Column(Integer, default=90)
-    status = Column(Enum(CaseStatus), default=CaseStatus.OPEN)
+    status = Column(Enum(CaseStatus, values_callable=lambda x: [e.value for e in x], native_enum=True), default=CaseStatus.OPEN)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
     
@@ -108,7 +108,7 @@ class User(Base):
     id = Column(Integer, primary_key=True)
     email = Column(String(255), unique=True, nullable=False)
     name = Column(String(255), nullable=False)
-    role = Column(Enum(UserRole), default=UserRole.REVIEWER)
+    role = Column(Enum(UserRole, values_callable=lambda x: [e.value for e in x], native_enum=True), default=UserRole.REVIEWER)
     password_hash = Column(String(255))  # For future auth implementation
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, server_default=func.now())
@@ -147,7 +147,7 @@ class Run(Base):
     
     id = Column(Integer, primary_key=True)
     case_id = Column(Integer, ForeignKey("cases.id", ondelete="CASCADE"), nullable=False)
-    status = Column(Enum(RunStatus), default=RunStatus.QUEUED)
+    status = Column(Enum(RunStatus, values_callable=lambda x: [e.value for e in x], native_enum=True), default=RunStatus.QUEUED)
     
     # Model configuration
     provider = Column(String(50))  # openrouter, anthropic, openai, etc.
@@ -203,7 +203,7 @@ class Document(Base):
     # Processing information
     ocr_detected = Column(Boolean, default=False)
     pages = Column(Integer)
-    status = Column(Enum(DocumentStatus), default=DocumentStatus.PENDING)
+    status = Column(Enum(DocumentStatus, values_callable=lambda x: [e.value for e in x], native_enum=True), default=DocumentStatus.PENDING)
     error = Column(Text)
     
     # Timing
