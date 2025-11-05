@@ -26,7 +26,7 @@ python-dotenv>=1.0.0
 
 # Data Processing (pinned for Python 3.12 compatibility)
 pandas==2.1.4
-openpyxl==3.0.10
+openpyxl>=3.1.5,<4.0.0  # docling 2.60.1 requires >=3.1.5
 numpy<2
 
 # Existing Pipeline Dependencies
