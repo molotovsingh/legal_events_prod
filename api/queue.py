@@ -199,35 +199,35 @@ def schedule_job(
 ) -> str:
     """
     Schedule a job to run after a delay
-    
+
     Args:
         func_name: Function name to call
         delay_seconds: Delay in seconds
         queue_name: Queue priority
         **kwargs: Arguments for the function
-        
+
     Returns:
         Job ID
     """
     try:
         from datetime import datetime, timedelta
-        
+
         queue = QUEUES.get(queue_name, QUEUES["default"])
-        
-        # Map function names
+
+        # Map function names to string-based RQ references
+        # Using string references avoids cross-service imports
         if func_name == "cleanup_old_runs":
-            from ..worker.tasks import cleanup_old_runs
             job = queue.enqueue_at(
                 datetime.utcnow() + timedelta(seconds=delay_seconds),
-                cleanup_old_runs,
+                "worker.tasks.cleanup_old_runs",
                 **kwargs
             )
         else:
             raise ValueError(f"Unknown scheduled function: {func_name}")
-        
+
         logger.info(f"⏰ Scheduled job {job.id} to run in {delay_seconds} seconds")
         return job.id
-        
+
     except Exception as e:
         logger.error(f"Failed to schedule job: {e}")
         raise

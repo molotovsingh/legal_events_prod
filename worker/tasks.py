@@ -20,13 +20,13 @@ from core.legal_pipeline_refactored import LegalEventsPipeline
 from core.constants import FIVE_COLUMN_HEADERS
 
 # Import v2 components
-from ..api.database import SessionLocal
-from ..api.models import (
+from worker.database import SessionLocal
+from api.models import (
     Run, RunStatus, Document, DocumentStatus, Event, Artifact,
     Case, Client
 )
-from ..api.storage import MinioStorage
-from ..api.queue import JobProgress
+from api.storage import MinioStorage
+from api.queue import JobProgress
 
 logger = logging.getLogger(__name__)
 
