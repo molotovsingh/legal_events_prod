@@ -1,0 +1,40 @@
+# Development Overrides - Hot Reload Support
+# This file is automatically loaded by `docker compose up` and overrides the production config
+# Use ONLY for local development with hot-reload mounts
+# Production deployments should use docker-compose.yml only
+
+version: '3.8'
+
+services:
+  api:
+    # Development: enable hot-reload for API code changes
+    volumes:
+      - ./api:/app/api
+      - ./core:/app/core
+    # Use non-detached mode for debugging
+    environment:
+      PYTHONUNBUFFERED: 1
+    command:
+      - sh
+      - -c
+      - |
+        alembic upgrade head
+        uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
+
+  worker:
+    # Development: enable hot-reload for worker code changes
+    volumes:
+      - ./worker:/app/worker
+      - ./core:/app/core
+      - ./utils:/app/utils
+
+  frontend:
+    # Development: enable hot-reload for frontend code changes
+    volumes:
+      - ./frontend:/app
+
+# Note:
+# - These mounts are applied ON TOP of the base docker-compose.yml
+# - In production, docker-compose.override.yml should NOT exist or should be empty
+# - For CI/CD deployments, use: docker compose -f docker-compose.yml up
+# - For local development, use: docker compose up (which loads both files)

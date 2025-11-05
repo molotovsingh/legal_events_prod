@@ -73,10 +73,6 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-    volumes:
-      - ./api:/app/api
-      - ./worker:/app/worker
-      - ./core:/app/core  # Mount production extraction pipeline
     depends_on:
       postgres:
         condition: service_healthy
@@ -153,9 +149,6 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-    volumes:
-      - ./worker:/app/worker
-      - ./core:/app/core  # Mount production extraction pipeline
     depends_on:
       - redis
       - postgres
@@ -174,8 +167,6 @@ services:
       API_URL: http://api:8000
     depends_on:
       - api
-    volumes:
-      - ./frontend:/app
 
 volumes:
   postgres_data:

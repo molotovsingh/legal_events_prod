@@ -14,13 +14,15 @@ RUN apt-get update && apt-get install -y \
     poppler-utils \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy production directory
+# Copy worker-specific code only
 COPY requirements.txt /app/requirements.txt
-COPY api /app/api
 COPY worker /app/worker
 
-# Copy extraction pipeline
+# Copy shared extraction pipeline (read-only)
 COPY core /app/core
+
+# Copy utils for file operations
+COPY utils /app/utils
 
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
