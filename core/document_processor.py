@@ -7,12 +7,19 @@ from pathlib import Path
 from typing import Tuple, Optional
 from docling.document_converter import DocumentConverter, FormatOption
 from docling.datamodel.pipeline_options import (
-    ConvertPipelineOptions,
     PdfPipelineOptions,
     TableStructureOptions,
     AcceleratorOptions,
     TableFormerMode
 )
+
+# Handle docling version compatibility
+try:
+    from docling.datamodel.pipeline_options import ConvertPipelineOptions
+except ImportError:
+    # Newer docling versions use PdfPipelineOptions for all conversions
+    ConvertPipelineOptions = PdfPipelineOptions
+
 from docling.datamodel.base_models import InputFormat
 from docling.backend.docling_parse_v2_backend import DoclingParseV2DocumentBackend
 from docling.backend.docling_parse_v4_backend import DoclingParseV4DocumentBackend
