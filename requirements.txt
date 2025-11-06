@@ -39,7 +39,8 @@ requests>=2.32.0
 python-dateutil>=2.9.0
 
 # Event Extraction (LangExtract for Gemini support)
-langextract>=0.1.0
+# Note: Installed from git in Dockerfile, not from PyPI
+# langextract@git+https://github.com/google/langextract.git
 
 # Development/Testing
 pytest>=8.0.0

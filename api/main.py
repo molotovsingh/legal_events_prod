@@ -306,15 +306,35 @@ async def start_run(
 ):
     """
     Start processing a run with uploaded documents
+
+    Idempotency:
+    If idempotency_key is provided and a run with this key was already started,
+    return the previous result instead of creating duplicates.
     """
+    # Handle idempotency via Redis
+    idempotency_key = manifest.idempotency_key
+    if idempotency_key:
+        try:
+            import redis
+            r = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379"))
+            cache_key = f"idempotency:start_run:{idempotency_key}"
+
+            # Check if this idempotency key was already processed
+            cached_result = r.get(cache_key)
+            if cached_result:
+                logger.info(f"Idempotency hit for key {idempotency_key}")
+                return json.loads(cached_result)
+        except Exception as e:
+            logger.warning(f"Idempotency check failed: {e}, proceeding without cache")
+
     # Get run
     run = db.query(Run).filter(Run.id == run_id).first()
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
-    
+
     if run.status != RunStatus.QUEUED:
         raise HTTPException(status_code=400, detail=f"Run is {run.status.value}, not queued")
-    
+
     # Create document records
     for file_info in manifest.files:
         doc = Document(
@@ -327,13 +347,13 @@ async def start_run(
             mime_type=file_info.mime_type
         )
         db.add(doc)
-    
+
     # Update run status
     run.status = RunStatus.PROCESSING
     run.started_at = datetime.utcnow()
-    
+
     db.commit()
-    
+
     # Enqueue processing job
     job_id = enqueue_job(
         "process_run",
@@ -341,15 +361,27 @@ async def start_run(
         provider=run.provider,
         model=run.model
     )
-    
-    logger.info(f"Started run {run_id} with job {job_id}")
-    
-    return {
+
+    response = {
         "status": "accepted",
         "run_id": run_id,
         "job_id": job_id,
         "message": "Run processing started"
     }
+
+    # Cache the result for idempotency (24-hour TTL)
+    if idempotency_key:
+        try:
+            import redis
+            r = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379"))
+            cache_key = f"idempotency:start_run:{idempotency_key}"
+            r.setex(cache_key, 86400, json.dumps(response))
+        except Exception as e:
+            logger.warning(f"Failed to cache idempotency result: {e}")
+
+    logger.info(f"Started run {run_id} with job {job_id}")
+
+    return response
 
 
 @app.get("/v1/runs/{run_id}", response_model=RunResponse)
