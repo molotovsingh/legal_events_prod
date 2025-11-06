@@ -32,18 +32,18 @@ def enqueue_job(
 ) -> str:
     """
     Enqueue a job for background processing
-    
+
     Args:
         func_name: Name of the function to call
         queue_name: Queue priority (high, default, low)
         **kwargs: Arguments to pass to the function
-        
+
     Returns:
         Job ID
     """
     try:
         queue = QUEUES.get(queue_name, QUEUES["default"])
-        
+
         # Map function names to actual functions
         # Note: Using function names as strings to avoid import issues
         # The worker will resolve these at execution time
@@ -55,10 +55,10 @@ def enqueue_job(
             job = queue.enqueue("worker.tasks.generate_artifacts", **kwargs)
         else:
             raise ValueError(f"Unknown function: {func_name}")
-        
+
         logger.info(f"📋 Enqueued job {job.id} in {queue_name} queue")
         return job.id
-        
+
     except Exception as e:
         logger.error(f"Failed to enqueue job: {e}")
         raise
@@ -67,16 +67,16 @@ def enqueue_job(
 def get_job_status(job_id: str) -> Optional[Dict[str, Any]]:
     """
     Get status of a job
-    
+
     Args:
         job_id: Job ID
-        
+
     Returns:
         Job status dict or None if not found
     """
     try:
         job = Job.fetch(job_id, connection=redis_conn)
-        
+
         return {
             "id": job.id,
             "status": job.get_status(),
@@ -95,10 +95,10 @@ def get_job_status(job_id: str) -> Optional[Dict[str, Any]]:
 def cancel_job(job_id: str) -> bool:
     """
     Cancel a job
-    
+
     Args:
         job_id: Job ID
-        
+
     Returns:
         True if cancelled successfully
     """
@@ -115,16 +115,16 @@ def cancel_job(job_id: str) -> bool:
 def get_queue_stats(queue_name: str = "default") -> Dict[str, int]:
     """
     Get queue statistics
-    
+
     Args:
         queue_name: Queue name
-        
+
     Returns:
         Queue statistics
     """
     try:
         queue = QUEUES.get(queue_name, QUEUES["default"])
-        
+
         return {
             "name": queue_name,
             "queued": len(queue),
@@ -142,10 +142,10 @@ def get_queue_stats(queue_name: str = "default") -> Dict[str, int]:
 def clear_queue(queue_name: str = "default") -> bool:
     """
     Clear all jobs from a queue (use with caution!)
-    
+
     Args:
         queue_name: Queue name
-        
+
     Returns:
         True if cleared successfully
     """
@@ -166,24 +166,24 @@ def update_job_progress(
 ) -> bool:
     """
     Update job progress (for long-running tasks)
-    
+
     Args:
         job_id: Job ID
         progress: Progress percentage (0-100)
         message: Optional status message
-        
+
     Returns:
         True if updated successfully
     """
     try:
         job = Job.fetch(job_id, connection=redis_conn)
-        
+
         # Update job meta data
         job.meta["progress"] = progress
         if message:
             job.meta["message"] = message
         job.save_meta()
-        
+
         logger.debug(f"Updated job {job_id} progress: {progress}%")
         return True
     except Exception as e:
@@ -236,30 +236,30 @@ def schedule_job(
 def retry_failed_jobs(queue_name: str = "default") -> int:
     """
     Retry all failed jobs in a queue
-    
+
     Args:
         queue_name: Queue name
-        
+
     Returns:
         Number of jobs retried
     """
     try:
         queue = QUEUES.get(queue_name, QUEUES["default"])
         failed_registry = queue.failed_job_registry
-        
+
         job_ids = failed_registry.get_job_ids()
         count = 0
-        
+
         for job_id in job_ids:
             try:
                 failed_registry.requeue(job_id)
                 count += 1
             except Exception as e:
                 logger.error(f"Failed to retry job {job_id}: {e}")
-        
+
         logger.info(f"♻️ Retried {count} failed jobs in {queue_name} queue")
         return count
-        
+
     except Exception as e:
         logger.error(f"Failed to retry failed jobs: {e}")
         return 0
@@ -268,13 +268,13 @@ def retry_failed_jobs(queue_name: str = "default") -> int:
 def get_worker_stats() -> Dict[str, Any]:
     """
     Get worker statistics
-    
+
     Returns:
         Worker stats dict
     """
     try:
         workers = Worker.all(connection=redis_conn)
-        
+
         return {
             "total_workers": len(workers),
             "workers": [
@@ -306,19 +306,19 @@ class JobProgress:
             # ... more work ...
             progress.update(100, "Complete!")
     """
-    
+
     def __init__(self, job_id: str):
         self.job_id = job_id
-        
+
     def __enter__(self):
         return self
-    
+
     def __exit__(self, exc_type, exc_val, exc_tb):
         if exc_type is None:
             self.update(100, "Complete")
         else:
             self.update(-1, f"Failed: {exc_val}")
-    
+
     def update(self, percent: int, message: str = ""):
         """Update progress"""
         update_job_progress(self.job_id, percent, message)

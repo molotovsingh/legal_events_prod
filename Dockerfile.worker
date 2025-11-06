@@ -13,6 +13,7 @@ RUN apt-get update && apt-get install -y \
     tesseract-ocr \
     poppler-utils \
     libmupdf-dev \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy worker-specific code only
@@ -25,14 +26,8 @@ COPY core /app/core
 # Copy utils for file operations
 COPY utils /app/utils
 
-# Copy shared API modules (schema contracts and utilities only)
-# This maintains service boundaries: worker gets models, storage, queue
-# but NOT API business logic (routes, main, etc.)
-RUN mkdir -p /app/api
-COPY api/__init__.py /app/api/__init__.py
-COPY api/models.py /app/api/models.py
-COPY api/storage.py /app/api/storage.py
-COPY api/queue.py /app/api/queue.py
+# Copy shared infrastructure module
+COPY infra /app/infra
 
 # Install Python dependencies (includes langextract from requirements.txt)
 RUN pip install --no-cache-dir -r requirements.txt

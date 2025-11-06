@@ -18,7 +18,7 @@ class MinioStorage:
     """
     MinIO client for S3-compatible object storage
     """
-    
+
     def __init__(self):
         """Initialize MinIO client from environment variables"""
         self.endpoint = os.getenv("MINIO_ENDPOINT", "localhost:9000")
@@ -39,7 +39,7 @@ class MinioStorage:
 
         logger.info(f"📦 MinIO client initialized for {self.endpoint}")
         logger.info(f"📦 MinIO public endpoint for presigned URLs: {self.public_endpoint}")
-    
+
     def ensure_bucket(self) -> bool:
         """
         Ensure the bucket exists, create if not
@@ -54,7 +54,7 @@ class MinioStorage:
         except S3Error as e:
             logger.error(f"❌ Failed to ensure bucket: {e}")
             return False
-    
+
     def generate_upload_url(
         self,
         client_id: int,
@@ -101,7 +101,7 @@ class MinioStorage:
         except S3Error as e:
             logger.error(f"Failed to generate upload URL: {e}")
             raise
-    
+
     def generate_download_url(
         self,
         object_name: str,
@@ -109,11 +109,11 @@ class MinioStorage:
     ) -> str:
         """
         Generate presigned URL for file download
-        
+
         Args:
             object_name: Object key in bucket
             expiry: URL expiration time
-            
+
         Returns:
             Presigned URL for GET operation
         """
@@ -128,7 +128,7 @@ class MinioStorage:
         except S3Error as e:
             logger.error(f"Failed to generate download URL: {e}")
             raise
-    
+
     def upload_file(
         self,
         file_path: str,
@@ -137,12 +137,12 @@ class MinioStorage:
     ) -> bool:
         """
         Upload a file to MinIO
-        
+
         Args:
             file_path: Local file path
             object_name: Destination object key
             metadata: Optional metadata dict
-            
+
         Returns:
             True if successful
         """
@@ -159,7 +159,7 @@ class MinioStorage:
         except S3Error as e:
             logger.error(f"Failed to upload file: {e}")
             return False
-    
+
     def upload_bytes(
         self,
         object_name: str,
@@ -169,20 +169,20 @@ class MinioStorage:
     ) -> bool:
         """
         Upload bytes directly to MinIO
-        
+
         Args:
             object_name: Destination object key
             data: Bytes to upload
             content_type: MIME type
             metadata: Optional metadata dict
-            
+
         Returns:
             True if successful
         """
         try:
             import io
             data_stream = io.BytesIO(data)
-            
+
             result = self.client.put_object(
                 self.bucket,
                 object_name,
@@ -196,7 +196,7 @@ class MinioStorage:
         except S3Error as e:
             logger.error(f"Failed to upload bytes: {e}")
             return False
-    
+
     def download_file(
         self,
         object_name: str,
@@ -204,11 +204,11 @@ class MinioStorage:
     ) -> bool:
         """
         Download a file from MinIO
-        
+
         Args:
             object_name: Source object key
             file_path: Destination file path
-            
+
         Returns:
             True if successful
         """
@@ -223,14 +223,14 @@ class MinioStorage:
         except S3Error as e:
             logger.error(f"Failed to download file: {e}")
             return False
-    
+
     def download_bytes(self, object_name: str) -> Optional[bytes]:
         """
         Download object as bytes
-        
+
         Args:
             object_name: Object key
-            
+
         Returns:
             Bytes if successful, None otherwise
         """
@@ -244,14 +244,14 @@ class MinioStorage:
         except S3Error as e:
             logger.error(f"Failed to download bytes: {e}")
             return None
-    
+
     def delete_object(self, object_name: str) -> bool:
         """
         Delete an object from MinIO
-        
+
         Args:
             object_name: Object key to delete
-            
+
         Returns:
             True if successful
         """
@@ -262,14 +262,14 @@ class MinioStorage:
         except S3Error as e:
             logger.error(f"Failed to delete object: {e}")
             return False
-    
+
     def list_objects(self, prefix: str) -> list:
         """
         List objects with a given prefix
-        
+
         Args:
             prefix: Object key prefix
-            
+
         Returns:
             List of object names
         """
@@ -283,14 +283,14 @@ class MinioStorage:
         except S3Error as e:
             logger.error(f"Failed to list objects: {e}")
             return []
-    
+
     def object_exists(self, object_name: str) -> bool:
         """
         Check if an object exists
-        
+
         Args:
             object_name: Object key
-            
+
         Returns:
             True if exists
         """
@@ -299,14 +299,14 @@ class MinioStorage:
             return True
         except S3Error:
             return False
-    
+
     def get_object_metadata(self, object_name: str) -> Optional[dict]:
         """
         Get object metadata
-        
+
         Args:
             object_name: Object key
-            
+
         Returns:
             Metadata dict if exists
         """
@@ -322,23 +322,23 @@ class MinioStorage:
         except S3Error as e:
             logger.error(f"Failed to get metadata: {e}")
             return None
-    
+
     def calculate_sha256(self, data: bytes) -> str:
         """
         Calculate SHA256 hash of data
-        
+
         Args:
             data: Bytes to hash
-            
+
         Returns:
             Hex digest string
         """
         return hashlib.sha256(data).hexdigest()
-    
+
     def health_check(self) -> bool:
         """
         Check if MinIO is accessible
-        
+
         Returns:
             True if healthy
         """

@@ -10,6 +10,7 @@ services:
     # Development: enable hot-reload for API code changes
     volumes:
       - ./api:/app/api
+      - ./infra:/app/infra
       - ./core:/app/core
     # Use non-detached mode for debugging
     environment:
@@ -25,6 +26,7 @@ services:
     # Development: enable hot-reload for worker code changes
     volumes:
       - ./worker:/app/worker
+      - ./infra:/app/infra
       - ./core:/app/core
       - ./utils:/app/utils
 

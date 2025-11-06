@@ -8,7 +8,7 @@ from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.pool import NullPool
 import logging
 
-from .models import Base
+from infra.models import Base
 
 logger = logging.getLogger(__name__)
 
@@ -38,10 +38,10 @@ def init_db():
         # Create all tables
         Base.metadata.create_all(bind=engine)
         logger.info("✅ Database tables created/verified")
-        
+
         # Populate initial data if needed
         populate_initial_data()
-        
+
     except Exception as e:
         logger.error(f"❌ Database initialization failed: {e}")
         raise
@@ -68,13 +68,13 @@ def populate_initial_data():
     """
     db = SessionLocal()
     try:
-        from .models import ModelCatalog, User, UserRole
-        
+        from infra.models import ModelCatalog, User, UserRole
+
         # Check if we already have data
         if db.query(ModelCatalog).count() > 0:
             logger.info("Database already has data, skipping initial population")
             return
-        
+
         # Add default models to catalog
         default_models = [
             {
@@ -126,11 +126,11 @@ def populate_initial_data():
                 "status": "stable"
             }
         ]
-        
+
         for model_data in default_models:
             model = ModelCatalog(**model_data)
             db.add(model)
-        
+
         # Add default admin user
         admin_user = User(
             email="admin@legalevents.local",
@@ -139,7 +139,7 @@ def populate_initial_data():
             password_hash="$2b$12$dummy_hash_replace_with_real"  # TODO: Hash real password
         )
         db.add(admin_user)
-        
+
         # Add sample user
         sample_user = User(
             email="paralegal@example.com",
@@ -147,10 +147,10 @@ def populate_initial_data():
             role=UserRole.REVIEWER
         )
         db.add(sample_user)
-        
+
         db.commit()
         logger.info("✅ Initial data populated")
-        
+
     except Exception as e:
         logger.error(f"Failed to populate initial data: {e}")
         db.rollback()

@@ -16,11 +16,11 @@ import json
 from contextlib import asynccontextmanager
 
 # Local imports (we'll create these next)
-from .database import get_db, init_db
-from .models import *
+from infra.database import get_db, init_db
+from infra.models import *
 from .schemas import *
-from .storage import MinioStorage
-from .queue import enqueue_job
+from infra.storage import MinioStorage
+from infra.queue import enqueue_job
 from core.constants import FIVE_COLUMN_HEADERS
 from core.event_extractor_catalog import get_event_extractor_catalog
 # ✅ Authentication enabled - requires valid JWT Bearer token
@@ -629,7 +629,7 @@ async def stream_run_progress(
     from sse_starlette.sse import EventSourceResponse
     import asyncio
     import json
-    from .database import SessionLocal
+    from infra.database import SessionLocal
 
     async def event_generator():
         """Generate SSE events for run progress"""

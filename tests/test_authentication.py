@@ -7,7 +7,7 @@ import pytest
 import json
 import httpx
 from datetime import datetime, timedelta
-import jwt
+from jose import jwt
 import os
 
 API_URL = "http://localhost:8000"

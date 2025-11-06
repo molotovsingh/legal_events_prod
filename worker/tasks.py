@@ -37,13 +37,13 @@ from worker.database import SessionLocal
 
 # Import ORM models (data layer only, not business logic)
 # These are pure schema definitions shared across services
-from api.models import (
+from infra.models import (
     Run, RunStatus, Document, DocumentStatus, Event, Artifact,
     Case, Client
 )
 
 # Import storage layer (data access, not business logic)
-from api.storage import MinioStorage
+from infra.storage import MinioStorage
 
 logger = logging.getLogger(__name__)
 

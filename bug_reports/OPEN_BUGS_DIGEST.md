@@ -10,7 +10,7 @@ Purpose: Snapshot of open issues with priorities, suggested owners, and referenc
   - Owner: Backend
   - Action: Alembic migration to rename; run upgrade and verify exports
   - Reports: BUG_REPORT_20251105T111630Z.md, BUG_REPORT_20251105T170226Z.md
-  - Status: [ ] TODO
+  - Status: [x] RESOLVED
 
 - Worker dependencies missing (PyMuPDF/fitz, extract_msg, langextract)
   - Owner: Infra/Worker

@@ -11,7 +11,7 @@ from alembic import context
 sys.path.append(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
 
 # Import your models
-from api.models import Base
+from infra.models import Base
 
 # this is the Alembic Config object
 config = context.config
