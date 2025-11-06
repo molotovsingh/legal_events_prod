@@ -256,6 +256,11 @@ async def create_run(
     """
     Create a new run and get presigned upload URLs
     """
+    # Get case to retrieve client_id for multi-tenancy
+    case = db.query(Case).filter(Case.id == run.case_id).first()
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+
     # Create run in database
     db_run = Run(
         case_id=run.case_id,
@@ -266,23 +271,24 @@ async def create_run(
     db.add(db_run)
     db.commit()
     db.refresh(db_run)
-    
+
     # Generate presigned upload URLs
     storage = MinioStorage()
     upload_urls = []
-    
+
     # For now, return a batch of URLs (client will specify how many needed)
     # In production, this would be based on the actual files to upload
     for i in range(run.file_count or 1):
         url = storage.generate_upload_url(
+            client_id=case.client_id,
             case_id=run.case_id,
             run_id=db_run.id,
             filename=f"document_{i}.pdf"  # Placeholder
         )
         upload_urls.append(url)
-    
-    logger.info(f"Created run {db_run.id} with {len(upload_urls)} upload URLs")
-    
+
+    logger.info(f"Created run {db_run.id} for client {case.client_id} with {len(upload_urls)} upload URLs")
+
     return {
         "run_id": db_run.id,
         "case_id": run.case_id,

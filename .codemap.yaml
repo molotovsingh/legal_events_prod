@@ -1,0 +1,103 @@
+# CodeMap Configuration for legal-events-production
+# Validates v0.2.0 Guardrails Architecture
+
+project:
+  name: "Legal Events Production"
+  root: "."
+  exclude:
+    - "venv/**"
+    - ".git/**"
+    - "**/__pycache__/**"
+    - "**/*.pyc"
+    - "bug_reports/**"
+    - "test_documents/**"
+    - "testdocuments/**"
+    - "research/**"
+    - "migrations/**"
+
+# Microservice architecture boundaries
+services:
+  - name: api
+    description: "API Service - Owns clients, cases, runs, documents (CRUD)"
+    paths:
+      - "api/**"
+    color: "#90EE90"
+  
+  - name: worker
+    description: "Worker Service - Owns events, artifacts (write-only via processing)"
+    paths:
+      - "worker/**"
+    color: "#87CEEB"
+  
+  - name: core
+    description: "Shared Core - Business logic, extractors, processors"
+    paths:
+      - "core/**"
+    color: "#FFD700"
+  
+  - name: utils
+    description: "Utilities - Helper functions"
+    paths:
+      - "utils/**"
+    color: "#DDA0DD"
+  
+  - name: frontend
+    description: "Frontend - Static HTML/JS"
+    paths:
+      - "frontend/**"
+    color: "#FFA07A"
+
+# v0.2.0 Guardrails Enforcement
+rules:
+  # CRITICAL: Service Boundaries
+  - name: api-cannot-import-worker
+    severity: error
+    type: cannot_import
+    from: "api/**"
+    cannot_import: "worker/**"
+    message: |
+      GUARDRAIL VIOLATION: API service must not import Worker code.
+      - API never imports worker code
+      - Use string-based RQ enqueue: queue.enqueue('worker.tasks.process_run')
+      - Communication: Redis queues + PostgreSQL only
+      Reference: CLAUDE.md v0.2.0 Guardrails Architecture
+  
+  - name: worker-cannot-import-api
+    severity: error
+    type: cannot_import
+    from: "worker/**"
+    cannot_import: "api/**"
+    message: |
+      GUARDRAIL VIOLATION: Worker service must not import API code.
+      - Worker never imports API code
+      - Use database/Redis for all communication
+      - Worker reads clients/cases/runs/documents (read-only)
+      Reference: CLAUDE.md v0.2.0 Guardrails Architecture
+  
+  # Data Contract Enforcement
+  - name: shared-no-service-deps
+    severity: error
+    type: cannot_import
+    from: "core/**"
+    cannot_import:
+      - "api/**"
+      - "worker/**"
+    message: "Core/shared code should not depend on specific services."
+  
+  # Code Quality
+  - name: prefer-absolute-imports
+    severity: warning
+    type: pattern
+    pattern: "^from \\.\\."
+    message: "Prefer absolute imports for better clarity and IDE support."
+
+visualization:
+  group_by: service
+  show_violations_only: false
+  layout: hierarchical
+
+report:
+  include_snippets: true
+  snippet_context: 3
+  fail_on_violations: true
+  fail_on: ["error"]

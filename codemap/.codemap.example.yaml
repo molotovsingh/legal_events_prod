@@ -1,0 +1,125 @@
+# Example CodeMap Configuration
+# Copy this to .codemap.yaml in your project root and customize
+
+project:
+  name: "My Python Project"
+  root: "."
+  
+  # Directories to exclude from analysis
+  exclude:
+    - "venv/**"
+    - "node_modules/**"
+    - ".git/**"
+    - "**/__pycache__/**"
+    - "**/*.pyc"
+    - "tests/**"  # Optional: exclude tests
+    - "migrations/**"  # Optional: exclude DB migrations
+
+# Define your architectural components/services
+services:
+  - name: api
+    description: "API service - handles HTTP requests"
+    paths:
+      - "api/**/*.py"
+    color: "#90EE90"  # Light green
+  
+  - name: worker
+    description: "Background worker service"
+    paths:
+      - "worker/**/*.py"
+    color: "#87CEEB"  # Sky blue
+  
+  - name: core
+    description: "Shared business logic"
+    paths:
+      - "core/**/*.py"
+    color: "#FFD700"  # Gold
+  
+  - name: utils
+    description: "Utility functions"
+    paths:
+      - "utils/**/*.py"
+    color: "#DDA0DD"  # Plum
+  
+  - name: frontend
+    description: "Frontend static files"
+    paths:
+      - "frontend/**/*.py"
+    color: "#FFA07A"  # Light salmon
+
+# Define architectural rules
+rules:
+  # Microservice boundary enforcement
+  - name: no-api-imports-worker
+    severity: error
+    type: cannot_import
+    from: "api/**/*.py"
+    cannot_import: "worker/**/*.py"
+    message: "API service must not import Worker code. Use RQ string-based enqueue instead."
+  
+  - name: no-worker-imports-api
+    severity: error
+    type: cannot_import
+    from: "worker/**/*.py"
+    cannot_import: "api/**/*.py"
+    message: "Worker service must not import API code. Communication via Redis/DB only."
+  
+  # Layer architecture (if applicable)
+  - name: no-ui-to-data
+    severity: warning
+    type: cannot_import
+    from: "frontend/**/*.py"
+    cannot_import: "core/database/**/*.py"
+    message: "UI should not access data layer directly."
+  
+  # Import style preferences
+  - name: prefer-absolute-imports
+    severity: warning
+    type: pattern
+    pattern: "^from \\.\\."
+    message: "Prefer absolute imports over relative imports for better clarity."
+  
+  # Security rules
+  - name: no-direct-sql
+    severity: error
+    type: pattern
+    pattern: "cursor\\.execute\\(.*%.*\\)"
+    message: "Use parameterized queries to prevent SQL injection."
+  
+  # Dependency constraints
+  - name: shared-no-service-deps
+    severity: error
+    type: cannot_import
+    from: "core/**/*.py"
+    cannot_import:
+      - "api/**/*.py"
+      - "worker/**/*.py"
+    message: "Shared code should not depend on specific services."
+
+# Visualization settings
+visualization:
+  # Group nodes by service
+  group_by: service
+  
+  # Show only violations (hide clean edges)
+  show_violations_only: false
+  
+  # Collapse nodes with many connections
+  collapse_threshold: 10
+  
+  # Layout algorithm
+  layout: hierarchical  # Options: hierarchical, force, circular
+
+# Report settings
+report:
+  # Include source code snippets in violations
+  include_snippets: true
+  
+  # Number of lines to show around violation
+  snippet_context: 3
+  
+  # Fail CI/CD if violations found
+  fail_on_violations: true
+  
+  # Fail only on specific severities
+  fail_on: ["error"]  # Options: error, warning, info

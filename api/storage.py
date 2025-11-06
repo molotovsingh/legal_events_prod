@@ -57,6 +57,7 @@ class MinioStorage:
     
     def generate_upload_url(
         self,
+        client_id: int,
         case_id: int,
         run_id: int,
         filename: str,
@@ -66,6 +67,7 @@ class MinioStorage:
         Generate presigned URL for file upload
 
         Args:
+            client_id: Client ID (for multi-tenancy)
             case_id: Case ID
             run_id: Run ID
             filename: Original filename
@@ -74,9 +76,8 @@ class MinioStorage:
         Returns:
             Presigned URL for PUT operation (using public endpoint for browser access)
         """
-        # Generate object key
-        # Note: In production, we'd include client_id too
-        object_name = f"cases/{case_id}/runs/{run_id}/docs/{filename}"
+        # Generate object key with client_id for multi-tenancy isolation
+        object_name = f"clients/{client_id}/cases/{case_id}/runs/{run_id}/docs/{filename}"
 
         try:
             # Generate presigned PUT URL

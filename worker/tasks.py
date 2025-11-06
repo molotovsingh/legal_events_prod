@@ -1,6 +1,19 @@
 """
 Background Worker Tasks
 Processes documents using the existing legal pipeline
+
+IMPORTANT: Service Boundary Pattern
+This module imports api.models ONLY for database schema definitions (ORM).
+It does NOT import api business logic, endpoints, or service-layer code.
+
+Imports allowed (pure data layer):
+- api.models: ORM schema definitions only
+- api.storage: MinioStorage (data access layer, not business logic)
+
+Imports forbidden (violate service boundaries):
+- api.queue: Business logic
+- api.schemas: Service-specific schemas
+- Any api business logic
 """
 
 import os
@@ -19,14 +32,18 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 from core.legal_pipeline_refactored import LegalEventsPipeline
 from core.constants import FIVE_COLUMN_HEADERS
 
-# Import v2 components
+# Import worker-owned dependencies
 from worker.database import SessionLocal
+
+# Import ORM models (data layer only, not business logic)
+# These are pure schema definitions shared across services
 from api.models import (
     Run, RunStatus, Document, DocumentStatus, Event, Artifact,
     Case, Client
 )
+
+# Import storage layer (data access, not business logic)
 from api.storage import MinioStorage
-from api.queue import JobProgress
 
 logger = logging.getLogger(__name__)
 
