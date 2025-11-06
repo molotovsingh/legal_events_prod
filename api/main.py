@@ -225,6 +225,11 @@ async def create_case(
     current_user: User = Depends(get_current_user)
 ):
     """Create a new case"""
+    # Validate client exists
+    client = db.query(Client).filter(Client.id == case.client_id).first()
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found")
+
     db_case = Case(
         client_id=case.client_id,
         name=case.name,

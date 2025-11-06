@@ -7,6 +7,7 @@ import os
 import logging
 from typing import Optional, BinaryIO
 from datetime import timedelta
+from urllib.parse import urlparse
 from minio import Minio
 from minio.error import S3Error
 import hashlib
@@ -21,9 +22,14 @@ class MinioStorage:
 
     def __init__(self):
         """Initialize MinIO client from environment variables"""
-        self.endpoint = os.getenv("MINIO_ENDPOINT", "localhost:9000")
+        # Normalize endpoints by stripping any existing http:// or https://
+        endpoint_raw = os.getenv("MINIO_ENDPOINT", "localhost:9000")
+        public_endpoint_raw = os.getenv("MINIO_PUBLIC_ENDPOINT", "localhost:9000")
+
+        self.endpoint = self._normalize_endpoint(endpoint_raw)
         # Public endpoint for browser presigned URLs (must be accessible from browser)
-        self.public_endpoint = os.getenv("MINIO_PUBLIC_ENDPOINT", "localhost:9000")
+        self.public_endpoint = self._normalize_endpoint(public_endpoint_raw)
+
         self.access_key = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
         self.secret_key = os.getenv("MINIO_SECRET_KEY", "minioadmin123")
         self.bucket = os.getenv("MINIO_BUCKET", "legal-documents")
@@ -39,6 +45,24 @@ class MinioStorage:
 
         logger.info(f"📦 MinIO client initialized for {self.endpoint}")
         logger.info(f"📦 MinIO public endpoint for presigned URLs: {self.public_endpoint}")
+
+    def _normalize_endpoint(self, endpoint: str) -> str:
+        """
+        Strip http:// or https:// from endpoint to ensure consistent format.
+        MinIO client expects endpoint without scheme; presigned URLs will add it as needed.
+
+        Args:
+            endpoint: Raw endpoint string (may include scheme)
+
+        Returns:
+            Normalized endpoint without scheme (just host:port)
+        """
+        parsed = urlparse(endpoint)
+        if parsed.scheme:
+            # Has scheme, return netloc (host:port)
+            return parsed.netloc
+        # No scheme, return as-is
+        return endpoint
 
     def ensure_bucket(self) -> bool:
         """
@@ -89,10 +113,10 @@ class MinioStorage:
 
             # Replace internal endpoint with public endpoint for browser access
             if self.endpoint != self.public_endpoint:
-                # Handle both http:// and https:// schemes
+                # Both endpoints are normalized (no scheme), construct with proper scheme
                 scheme = "https://" if self.secure else "http://"
                 internal_url = f"{scheme}{self.endpoint}"
-                public_url = f"{scheme if self.secure or 'https' in self.public_endpoint else 'http://'}{self.public_endpoint}"
+                public_url = f"{scheme}{self.public_endpoint}"
                 url = url.replace(internal_url, public_url)
                 logger.debug(f"Replaced endpoint {self.endpoint} with public endpoint {self.public_endpoint}")
 
