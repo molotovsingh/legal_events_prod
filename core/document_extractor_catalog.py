@@ -81,7 +81,7 @@ _DOC_EXTRACTOR_REGISTRY: List[DocExtractorEntry] = [
         enabled=True,
         prompt_id=None,  # No prompt needed (uses Tesseract OCR)
         prompt_override=None,
-        factory_callable="src.core.extractor_factory._create_docling_document_extractor"
+        factory_callable="core.extractor_factory._create_docling_document_extractor"
     ),
 
     # === VISION EXTRACTORS (Paid) ===
@@ -107,7 +107,7 @@ _DOC_EXTRACTOR_REGISTRY: List[DocExtractorEntry] = [
         enabled=True,
         prompt_id="qwen_vl_doc",  # References doc_extractor_prompts.QWEN_VL_DOC_PROMPT
         prompt_override=None,
-        factory_callable="src.core.extractor_factory._create_qwen_vl_document_extractor"
+        factory_callable="core.extractor_factory._create_qwen_vl_document_extractor"
     ),
 ]
 

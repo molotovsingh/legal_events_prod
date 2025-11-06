@@ -59,7 +59,7 @@ def _create_qwen_vl_document_extractor(
 
 
 # Whitelist of allowed import paths for dynamic factory loading (security)
-_FACTORY_IMPORT_WHITELIST = ["src.core"]
+_FACTORY_IMPORT_WHITELIST = ["core"]
 
 
 def _build_doc_provider_registry() -> Dict[str, Callable[[DoclingConfig, Any, ExtractorConfig], DocumentExtractor]]:
