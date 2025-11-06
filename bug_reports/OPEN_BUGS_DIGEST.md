@@ -20,6 +20,12 @@ Purpose: Snapshot of open issues with priorities, suggested owners, and referenc
 
 ## P1 — Major
 
+- Event provider import failures (only langextract works)
+  - Owner: Backend/Infra
+  - Action: Fix import paths (src.core → core), add /v1/providers endpoint, validate on startup
+  - Reports: Technical debt (not in bug digest)
+  - Status: [x] RESOLVED (Session 2 - fixed import paths, added /v1/providers, added startup validation)
+
 - Cross-imports (worker imports `api.*`) — guardrail violation
   - Owner: Backend/Infra
   - Action: Extract shared infra (db/models/storage) to `infra/`; API→Worker via RQ strings
@@ -36,13 +42,13 @@ Purpose: Snapshot of open issues with priorities, suggested owners, and referenc
   - Owner: Backend
   - Action: Use dedicated DB session inside generator; close on exit
   - Reports: BUG_REPORT_20251105T170226Z.md
-  - Status: [ ] TODO
+  - Status: [x] RESOLVED (Session 2 - verified correct implementation)
 
 - LangExtract installation source unification
   - Owner: Infra/Worker
   - Action: Pick PyPI or pinned Git tag; remove the other
   - Reports: BUG_REPORT_20251105T125718Z.md
-  - Status: [ ] TODO
+  - Status: [x] RESOLVED (Session 2 - pinned in requirements.txt, removed from Dockerfiles)
 
 - UI “Recent Runs” lists cases (misleading)
   - Owner: Frontend

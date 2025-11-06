@@ -81,10 +81,7 @@
                     <input type="file" id="fileInput" multiple accept=".pdf,.docx,.txt" 
                            class="w-full p-2 border rounded mb-2">
                     <select id="providerSelect" class="w-full p-2 border rounded mb-2">
-                        <option value="langextract">Gemini (LangExtract) ⭐ Working</option>
-                        <option value="openrouter">OpenRouter (Llama 3.3)</option>
-                        <option value="anthropic">Anthropic (Claude)</option>
-                        <option value="openai">OpenAI (GPT-4)</option>
+                        <option value="">Loading providers...</option>
                     </select>
                     <button onclick="processDocuments()" 
                             class="w-full bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">
@@ -179,9 +176,56 @@
             return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
         }
 
-        // Check system health on load
+        /**
+         * Load available event extraction providers from API
+         * Populates the provider select dropdown dynamically
+         */
+        async function loadProviders() {
+            try {
+                const response = await axios.get(`${API_URL}/v1/providers?enabled=true`);
+                const providers = response.data.providers || [];
+                const select = document.getElementById('providerSelect');
+
+                // Clear existing options
+                select.innerHTML = '';
+
+                // Add options from API, sorted by recommended first
+                const recommended = providers.filter(p => p.recommended);
+                const others = providers.filter(p => !p.recommended);
+
+                for (const provider of [...recommended, ...others]) {
+                    const option = document.createElement('option');
+                    option.value = provider.provider_id;
+                    const icon = provider.recommended ? '⭐' : '';
+                    option.textContent = `${provider.display_name} ${icon}`;
+                    option.title = provider.notes;
+                    select.appendChild(option);
+                }
+
+                // Fallback if no providers loaded
+                if (providers.length === 0) {
+                    const option = document.createElement('option');
+                    option.value = 'langextract';
+                    option.textContent = 'Gemini (LangExtract) ⭐ Working';
+                    select.appendChild(option);
+                }
+            } catch (error) {
+                console.error('Failed to load providers:', error);
+                // Use hardcoded fallback if API fails
+                const select = document.getElementById('providerSelect');
+                select.innerHTML = `
+                    <option value="langextract">Gemini (LangExtract) ⭐ Working</option>
+                    <option value="openrouter">OpenRouter (Llama 3.3)</option>
+                    <option value="anthropic">Anthropic (Claude)</option>
+                    <option value="openai">OpenAI (GPT-4)</option>
+                `;
+            }
+        }
+
+        // Check system health and load providers on load
         window.onload = () => {
             checkHealth();
+            loadProviders();
             loadRuns();
         };
 

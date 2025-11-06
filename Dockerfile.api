@@ -20,13 +20,8 @@ COPY api /app/api
 # Copy shared extraction pipeline (read-only)
 COPY core /app/core
 
-# Install Python dependencies
+# Install Python dependencies (includes langextract from requirements.txt)
 RUN pip install --no-cache-dir -r requirements.txt
-
-# Install langextract from git
-RUN pip install --no-cache-dir \
-    langextract@git+https://github.com/google/langextract.git \
-    || echo "Some optional dependencies may have failed"
 
 # Copy Alembic files
 COPY alembic.ini /app/alembic.ini

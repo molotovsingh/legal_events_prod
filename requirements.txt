@@ -43,8 +43,8 @@ PyMuPDF>=1.24.0  # For PDF text extraction (fitz module)
 extract-msg>=0.48.0  # For MS Office document parsing (MSG, MSG files)
 
 # Event Extraction (LangExtract for Gemini support)
-# Note: Installed from git in Dockerfile, not from PyPI
-# langextract@git+https://github.com/google/langextract.git
+# Installed from git (not PyPI) to ensure latest bug fixes and features
+langextract @ git+https://github.com/google/langextract.git
 
 # Development/Testing
 pytest>=8.0.0

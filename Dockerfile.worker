@@ -34,13 +34,8 @@ COPY api/models.py /app/api/models.py
 COPY api/storage.py /app/api/storage.py
 COPY api/queue.py /app/api/queue.py
 
-# Install Python dependencies
+# Install Python dependencies (includes langextract from requirements.txt)
 RUN pip install --no-cache-dir -r requirements.txt
-
-# Install langextract from git
-RUN pip install --no-cache-dir \
-    langextract@git+https://github.com/google/langextract.git \
-    || echo "Some optional dependencies may have failed"
 
 # Create necessary directories
 RUN mkdir -p /app/logs /app/temp

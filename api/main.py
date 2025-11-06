@@ -22,6 +22,7 @@ from .schemas import *
 from .storage import MinioStorage
 from .queue import enqueue_job
 from core.constants import FIVE_COLUMN_HEADERS
+from core.event_extractor_catalog import get_event_extractor_catalog
 # ✅ Authentication enabled - requires valid JWT Bearer token
 from .auth import get_current_user, create_access_token
 
@@ -62,6 +63,23 @@ async def lifespan(app: FastAPI):
     storage = MinioStorage()
     storage.ensure_bucket()
     logger.info("✅ MinIO storage initialized")
+
+    # Validate event providers
+    logger.info("📋 Validating event extraction providers...")
+    try:
+        catalog = get_event_extractor_catalog()
+        enabled_providers = catalog.list_extractors(enabled=True)
+        enabled_ids = [p.provider_id for p in enabled_providers]
+        logger.info(f"✅ Event providers loaded: {', '.join(enabled_ids)}")
+
+        # Log any providers that failed to load
+        all_providers = catalog.list_extractors()
+        disabled_ids = [p.provider_id for p in all_providers if not p.enabled]
+        if disabled_ids:
+            logger.warning(f"⚠️ Disabled providers (import failures): {', '.join(disabled_ids)}")
+    except Exception as e:
+        logger.error(f"❌ Failed to validate event providers: {e}")
+        raise RuntimeError(f"Event provider validation failed: {e}")
 
     logger.info("🔒 Security: Authentication ENABLED (JWT required for write operations)")
 
@@ -680,15 +698,15 @@ async def list_models(
 ):
     """List available models from catalog"""
     query = db.query(ModelCatalog)
-    
+
     if provider:
         query = query.filter(ModelCatalog.provider == provider)
-    
+
     if recommended is not None:
         query = query.filter(ModelCatalog.is_recommended == recommended)
-    
+
     models = query.all()
-    
+
     return {
         "models": [
             {
@@ -706,6 +724,63 @@ async def list_models(
             for m in models
         ]
     }
+
+
+@app.get("/v1/providers")
+async def list_event_providers(
+    enabled: Optional[bool] = None,
+    recommended_only: Optional[bool] = None
+):
+    """
+    List available event extraction providers (Layer 2)
+
+    Provides dynamic provider discovery, allowing clients to query which LLM providers
+    are available and properly configured for event extraction.
+
+    Args:
+        enabled: Filter by enabled status (True=enabled only, False=disabled only, None=all)
+        recommended_only: Only return recommended providers if True
+
+    Returns:
+        JSON with list of provider metadata including:
+        - provider_id: Unique identifier (e.g., 'openai', 'anthropic')
+        - display_name: User-friendly name for UI
+        - enabled: Whether provider is available for use
+        - supports_runtime_model: If provider supports model selection at query time
+        - recommended: Whether this provider is recommended in UI
+        - notes: Additional information about the provider
+        - documentation_url: Link to provider documentation
+    """
+    try:
+        catalog = get_event_extractor_catalog()
+
+        # Get providers with filters
+        extractors = catalog.list_extractors(
+            enabled=enabled,
+            recommended_only=recommended_only or False
+        )
+
+        providers = [
+            {
+                "provider_id": e.provider_id,
+                "display_name": e.display_name,
+                "enabled": e.enabled,
+                "supports_runtime_model": e.supports_runtime_model,
+                "recommended": e.recommended,
+                "notes": e.notes,
+                "documentation_url": e.documentation_url
+            }
+            for e in extractors
+        ]
+
+        return {
+            "providers": providers,
+            "count": len(providers),
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Error listing providers: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to load providers: {str(e)}")
 
 
 if __name__ == "__main__":
