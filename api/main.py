@@ -22,14 +22,8 @@ from .schemas import *
 from .storage import MinioStorage
 from .queue import enqueue_job
 from core.constants import FIVE_COLUMN_HEADERS
-# TODO: Re-enable auth once PyJWT is installed
-# from .auth import get_current_user, create_access_token
-#
-# SECURITY WARNING: Authentication is currently disabled!
-# This is only acceptable for local development/testing.
-# DO NOT deploy to production without enabling authentication.
-# Install PyJWT: pip install "python-jose[cryptography]"
-# Then uncomment the auth imports above.
+# ✅ Authentication enabled - requires valid JWT Bearer token
+from .auth import get_current_user, create_access_token
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -144,7 +138,7 @@ async def health_check(db: Session = Depends(get_db)):
 async def create_client(
     client: ClientCreate,
     db: Session = Depends(get_db),
-    # current_user: User = Depends(get_current_user)  # TODO: Enable auth
+    current_user: User = Depends(get_current_user)
 ):
     """Create a new client organization"""
     db_client = Client(
@@ -155,8 +149,8 @@ async def create_client(
     db.add(db_client)
     db.commit()
     db.refresh(db_client)
-    
-    logger.info(f"Created client: {db_client.name} (ID: {db_client.id})")
+
+    logger.info(f"Created client: {db_client.name} (ID: {db_client.id}) by user {current_user.username}")
     return db_client
 
 
@@ -190,7 +184,8 @@ async def get_client(
 @app.post("/v1/cases", response_model=CaseResponse)
 async def create_case(
     case: CaseCreate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """Create a new case"""
     db_case = Case(
@@ -202,8 +197,8 @@ async def create_case(
     db.add(db_case)
     db.commit()
     db.refresh(db_case)
-    
-    logger.info(f"Created case: {db_case.name} (ID: {db_case.id})")
+
+    logger.info(f"Created case: {db_case.name} (ID: {db_case.id}) by user {current_user.username}")
     return db_case
 
 
@@ -221,7 +216,8 @@ async def list_client_cases(
 async def assign_user_to_case(
     case_id: int,
     assignment: CaseAssignmentCreate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """Assign a user to a case"""
     # Check if assignment already exists
@@ -229,10 +225,10 @@ async def assign_user_to_case(
         CaseAssignment.case_id == case_id,
         CaseAssignment.user_id == assignment.user_id
     ).first()
-    
+
     if existing:
         raise HTTPException(status_code=400, detail="User already assigned to case")
-    
+
     db_assignment = CaseAssignment(
         case_id=case_id,
         user_id=assignment.user_id,
@@ -240,7 +236,8 @@ async def assign_user_to_case(
     )
     db.add(db_assignment)
     db.commit()
-    
+
+    logger.info(f"User {assignment.user_id} assigned to case {case_id} by {current_user.username}")
     return {"message": "User assigned successfully"}
 
 
@@ -251,7 +248,8 @@ async def assign_user_to_case(
 @app.post("/v1/runs", response_model=RunCreateResponse)
 async def create_run(
     run: RunCreate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
     Create a new run and get presigned upload URLs
@@ -287,7 +285,7 @@ async def create_run(
         )
         upload_urls.append(url)
 
-    logger.info(f"Created run {db_run.id} for client {case.client_id} with {len(upload_urls)} upload URLs")
+    logger.info(f"Created run {db_run.id} for client {case.client_id} with {len(upload_urls)} upload URLs by {current_user.username}")
 
     return {
         "run_id": db_run.id,
@@ -302,7 +300,8 @@ async def start_run(
     run_id: int,
     manifest: RunManifest,
     background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
     Start processing a run with uploaded documents
@@ -379,7 +378,7 @@ async def start_run(
         except Exception as e:
             logger.warning(f"Failed to cache idempotency result: {e}")
 
-    logger.info(f"Started run {run_id} with job {job_id}")
+    logger.info(f"Started run {run_id} with job {job_id} by {current_user.username}")
 
     return response
 

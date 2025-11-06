@@ -14,6 +14,21 @@ project:
     - "testdocuments/**"
     - "research/**"
     - "migrations/**"
+    - "codemap/**"
+
+# AI configuration (optional)
+ai:
+  enabled: true
+  provider: openai  # or anthropic
+  api_key: ${OPENAI_API_KEY}  # or set CODEMAP_OPENAI_KEY env var
+  model: gpt-4o-mini  # Cheaper model for testing
+  temperature: 0.3
+  max_tokens: 500
+  
+  features:
+    explanations: true
+    queries: true
+    documentation: true
 
 # Microservice architecture boundaries
 services:

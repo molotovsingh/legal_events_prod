@@ -6,9 +6,9 @@ services:
     image: postgres:16-alpine
     container_name: legal_events_db
     environment:
-      POSTGRES_DB: legal_events
-      POSTGRES_USER: legal_user
-      POSTGRES_PASSWORD: legal_pass_2024
+      POSTGRES_DB: ${POSTGRES_DB:-legal_events}
+      POSTGRES_USER: ${POSTGRES_USER:-legal_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-generate-strong-password}
     ports:
       - "5432:5432"
     volumes:
@@ -41,8 +41,8 @@ services:
       - "9000:9000"     # API port
       - "9001:9001"     # Console port (web UI)
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin123
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-generate-strong-password}
     command: server /data --console-address ":9001"
     volumes:
       - minio_data:/data
@@ -61,19 +61,22 @@ services:
     ports:
       - "8000:8000"
     environment:
-      DATABASE_URL: postgresql://legal_user:legal_pass_2024@postgres:5432/legal_events
-      REDIS_URL: redis://redis:6379
-      MINIO_ENDPOINT: minio:9000
-      MINIO_PUBLIC_ENDPOINT: localhost:9000
-      MINIO_ACCESS_KEY: minioadmin
-      MINIO_SECRET_KEY: minioadmin123
-      MINIO_BUCKET: legal-documents
+      DATABASE_URL: postgresql://${POSTGRES_USER:-legal_user}:${POSTGRES_PASSWORD:-generate-strong-password}@postgres:5432/${POSTGRES_DB:-legal_events}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-minio:9000}
+      MINIO_PUBLIC_ENDPOINT: ${MINIO_PUBLIC_ENDPOINT:-localhost:9000}
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-generate-strong-password}
+      MINIO_BUCKET: ${MINIO_BUCKET:-legal-documents}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-}
       PYTHONUNBUFFERED: 1
       # Copy over any existing API keys from .env
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      API_KEY_ADMIN: ${API_KEY_ADMIN:-}
+      API_KEY_USER: ${API_KEY_USER:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -138,12 +141,12 @@ services:
       dockerfile: Dockerfile.worker
     container_name: legal_events_worker
     environment:
-      DATABASE_URL: postgresql://legal_user:legal_pass_2024@postgres:5432/legal_events
-      REDIS_URL: redis://redis:6379
-      MINIO_ENDPOINT: minio:9000
-      MINIO_ACCESS_KEY: minioadmin
-      MINIO_SECRET_KEY: minioadmin123
-      MINIO_BUCKET: legal-documents
+      DATABASE_URL: postgresql://${POSTGRES_USER:-legal_user}:${POSTGRES_PASSWORD:-generate-strong-password}@postgres:5432/${POSTGRES_DB:-legal_events}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-minio:9000}
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-generate-strong-password}
+      MINIO_BUCKET: ${MINIO_BUCKET:-legal-documents}
       PYTHONUNBUFFERED: 1
       # Copy over any existing API keys
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}

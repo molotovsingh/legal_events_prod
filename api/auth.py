@@ -19,7 +19,14 @@ from .models import User
 logger = logging.getLogger(__name__)
 
 # Configuration
-SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-secret-key-change-in-production")
+SECRET_KEY = os.getenv("JWT_SECRET_KEY")
+if not SECRET_KEY:
+    raise RuntimeError(
+        "CRITICAL: JWT_SECRET_KEY environment variable is not set. "
+        "This is required for token encryption. "
+        "Set it to a strong random value before starting the application."
+    )
+
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 24 hours
 
@@ -250,10 +257,21 @@ async def login(
 
 
 # Simple API key auth as alternative (for Phase 1)
-API_KEYS = {
-    os.getenv("API_KEY_ADMIN", "admin-key-change-me"): "admin",
-    os.getenv("API_KEY_USER", "user-key-change-me"): "user",
-}
+# Build API_KEYS from environment, skip if not set
+_admin_key = os.getenv("API_KEY_ADMIN")
+_user_key = os.getenv("API_KEY_USER")
+
+API_KEYS = {}
+if _admin_key:
+    API_KEYS[_admin_key] = "admin"
+if _user_key:
+    API_KEYS[_user_key] = "user"
+
+if not API_KEYS:
+    logger.warning(
+        "No API keys configured. API key authentication is disabled. "
+        "Set API_KEY_ADMIN and/or API_KEY_USER environment variables to enable."
+    )
 
 
 async def get_api_key_user(
