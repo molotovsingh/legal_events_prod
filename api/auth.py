@@ -21,10 +21,11 @@ logger = logging.getLogger(__name__)
 # Configuration
 SECRET_KEY = os.getenv("JWT_SECRET_KEY")
 if not SECRET_KEY:
-    raise RuntimeError(
-        "CRITICAL: JWT_SECRET_KEY environment variable is not set. "
-        "This is required for token encryption. "
-        "Set it to a strong random value before starting the application."
+    # Development fallback - operators MUST override in production
+    SECRET_KEY = "dev-secret-CHANGE-IN-PRODUCTION"
+    logger.warning(
+        "⚠️  Using insecure development JWT secret. "
+        "Set JWT_SECRET_KEY environment variable for production security!"
     )
 
 ALGORITHM = "HS256"

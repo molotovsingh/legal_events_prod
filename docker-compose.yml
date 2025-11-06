@@ -68,7 +68,7 @@ services:
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-generate-strong-password}
       MINIO_BUCKET: ${MINIO_BUCKET:-legal-documents}
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev-secret-CHANGE-IN-PRODUCTION}
       PYTHONUNBUFFERED: 1
       # Copy over any existing API keys from .env
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
