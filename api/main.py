@@ -583,61 +583,71 @@ async def export_run(
 
 @app.get("/v1/runs/{run_id}/stream")
 async def stream_run_progress(
-    run_id: int,
-    db: Session = Depends(get_db)
+    run_id: int
 ):
     """
     Server-Sent Events endpoint for real-time progress updates
+
+    Note: Proper DB session management for long-lived SSE connections.
+    Each loop iteration gets a fresh db session to avoid connection lifecycle issues.
     """
     from sse_starlette.sse import EventSourceResponse
     import asyncio
     import json
-    
+    from .database import SessionLocal
+
     async def event_generator():
         """Generate SSE events for run progress"""
         while True:
-            # Get current run status
-            run = db.query(Run).filter(Run.id == run_id).first()
-            if not run:
-                yield {"event": "error", "data": json.dumps({"error": "Run not found"})}
-                break
-            
-            # Get document progress
-            docs = db.query(Document).filter(Document.run_id == run_id).all()
-            
-            progress_data = {
-                "run_id": run_id,
-                "status": run.status.value,
-                "documents": []
-            }
-            
-            for doc in docs:
-                progress_data["documents"].append({
-                    "id": doc.id,
-                    "filename": doc.filename,
-                    "status": doc.status.value
-                })
-            
-            yield {
-                "event": "progress",
-                "data": json.dumps(progress_data)
-            }
-            
-            # If run is complete, send final event and close
-            if run.status in [RunStatus.SUCCESS, RunStatus.FAILED, RunStatus.PARTIAL_SUCCESS]:
-                yield {
-                    "event": "complete",
-                    "data": json.dumps({
-                        "run_id": run_id,
-                        "status": run.status.value,
-                        "finished_at": run.finished_at.isoformat() if run.finished_at else None
-                    })
+            # Create fresh DB session for each iteration (SSE streams are long-lived)
+            db = SessionLocal()
+            try:
+                # Get current run status
+                run = db.query(Run).filter(Run.id == run_id).first()
+                if not run:
+                    yield {"event": "error", "data": json.dumps({"error": "Run not found"})}
+                    break
+
+                # Get document progress
+                docs = db.query(Document).filter(Document.run_id == run_id).all()
+
+                progress_data = {
+                    "run_id": run_id,
+                    "status": run.status.value,
+                    "documents": []
                 }
-                break
-            
-            # Wait before next update
-            await asyncio.sleep(2)
-    
+
+                for doc in docs:
+                    progress_data["documents"].append({
+                        "id": doc.id,
+                        "filename": doc.filename,
+                        "status": doc.status.value
+                    })
+
+                yield {
+                    "event": "progress",
+                    "data": json.dumps(progress_data)
+                }
+
+                # If run is complete, send final event and close
+                if run.status in [RunStatus.SUCCESS, RunStatus.FAILED, RunStatus.PARTIAL_SUCCESS]:
+                    yield {
+                        "event": "complete",
+                        "data": json.dumps({
+                            "run_id": run_id,
+                            "status": run.status.value,
+                            "finished_at": run.finished_at.isoformat() if run.finished_at else None
+                        })
+                    }
+                    break
+
+                # Wait before next update
+                await asyncio.sleep(2)
+
+            finally:
+                # Always close the session to avoid connection leaks
+                db.close()
+
     return EventSourceResponse(event_generator())
 
 
