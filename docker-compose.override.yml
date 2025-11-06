@@ -30,8 +30,10 @@ services:
 
   frontend:
     # Development: enable hot-reload for frontend code changes
+    # Note: Single file mounts don't work reliably in Docker Desktop on macOS
+    # Solution: Rebuild frontend image with --no-cache when HTML changes
     volumes:
-      - ./frontend:/app
+      - ./frontend:/usr/share/nginx/html
 
 # Note:
 # - These mounts are applied ON TOP of the base docker-compose.yml

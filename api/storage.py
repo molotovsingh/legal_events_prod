@@ -22,11 +22,13 @@ class MinioStorage:
     def __init__(self):
         """Initialize MinIO client from environment variables"""
         self.endpoint = os.getenv("MINIO_ENDPOINT", "localhost:9000")
+        # Public endpoint for browser presigned URLs (must be accessible from browser)
+        self.public_endpoint = os.getenv("MINIO_PUBLIC_ENDPOINT", "localhost:9000")
         self.access_key = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
         self.secret_key = os.getenv("MINIO_SECRET_KEY", "minioadmin123")
         self.bucket = os.getenv("MINIO_BUCKET", "legal-documents")
         self.secure = os.getenv("MINIO_SECURE", "false").lower() == "true"
-        
+
         # Initialize client
         self.client = Minio(
             self.endpoint,
@@ -34,8 +36,9 @@ class MinioStorage:
             secret_key=self.secret_key,
             secure=self.secure
         )
-        
+
         logger.info(f"📦 MinIO client initialized for {self.endpoint}")
+        logger.info(f"📦 MinIO public endpoint for presigned URLs: {self.public_endpoint}")
     
     def ensure_bucket(self) -> bool:
         """
@@ -61,20 +64,20 @@ class MinioStorage:
     ) -> str:
         """
         Generate presigned URL for file upload
-        
+
         Args:
             case_id: Case ID
-            run_id: Run ID  
+            run_id: Run ID
             filename: Original filename
             expiry: URL expiration time
-            
+
         Returns:
-            Presigned URL for PUT operation
+            Presigned URL for PUT operation (using public endpoint for browser access)
         """
         # Generate object key
         # Note: In production, we'd include client_id too
         object_name = f"cases/{case_id}/runs/{run_id}/docs/{filename}"
-        
+
         try:
             # Generate presigned PUT URL
             url = self.client.presigned_put_object(
@@ -82,6 +85,16 @@ class MinioStorage:
                 object_name,
                 expires=expiry
             )
+
+            # Replace internal endpoint with public endpoint for browser access
+            if self.endpoint != self.public_endpoint:
+                # Handle both http:// and https:// schemes
+                scheme = "https://" if self.secure else "http://"
+                internal_url = f"{scheme}{self.endpoint}"
+                public_url = f"{scheme if self.secure or 'https' in self.public_endpoint else 'http://'}{self.public_endpoint}"
+                url = url.replace(internal_url, public_url)
+                logger.debug(f"Replaced endpoint {self.endpoint} with public endpoint {self.public_endpoint}")
+
             logger.debug(f"Generated upload URL for {object_name}")
             return url
         except S3Error as e:

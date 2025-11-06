@@ -149,8 +149,35 @@
     </div>
 
     <script>
-        const API_URL = 'http://localhost:8000';
+        // Determine API URL based on environment
+        // For development: localhost:8000 (user-facing)
+        // For Docker: api:8000 needs to be proxied through nginx, so use relative paths
+        // Solution: Use window.location.origin to maintain cross-domain compatibility
+        const API_URL = (() => {
+            // If API_URL env var is injected (e.g., from nginx config), use it
+            if (typeof window.APP_CONFIG !== 'undefined' && window.APP_CONFIG.API_URL) {
+                return window.APP_CONFIG.API_URL;
+            }
+            // Otherwise, use current host (works both in dev and Docker with proper nginx proxy)
+            // For localhost development: becomes http://localhost:8000
+            // For Docker: should be proxied via nginx to /api or configured in APP_CONFIG
+            return window.location.origin.replace(':3000', ':8000');
+        })();
+
         let currentRunId = null;
+
+        /**
+         * Calculate SHA-256 hash of a file using Web Crypto API
+         * @param {File} file - The file to hash
+         * @returns {Promise<string>} - Hexadecimal SHA-256 hash
+         */
+        async function calculateFileSHA256(file) {
+            const arrayBuffer = await file.arrayBuffer();
+            const hashBuffer = await crypto.subtle.digest('SHA-256', arrayBuffer);
+            // Convert to hex string
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+        }
 
         // Check system health on load
         window.onload = () => {
@@ -239,12 +266,13 @@
         }
 
         async function processDocuments() {
+            const clientId = document.getElementById('clientId').value;
             const caseId = document.getElementById('caseIdForRun').value;
             const files = document.getElementById('fileInput').files;
             const provider = document.getElementById('providerSelect').value;
-            
-            if (!caseId || files.length === 0) {
-                alert('Please select case ID and files');
+
+            if (!clientId || !caseId || files.length === 0) {
+                alert('Please select client ID, case ID, and files');
                 return;
             }
 
@@ -261,28 +289,36 @@
                 
                 const runId = runResponse.data.run_id;
                 const uploadUrls = runResponse.data.upload_urls;
-                
+
+                // Validate that we have the correct number of presigned URLs
+                if (!uploadUrls || uploadUrls.length !== files.length) {
+                    throw new Error(
+                        `URL count mismatch: expected ${files.length} URLs, got ${uploadUrls ? uploadUrls.length : 0}. ` +
+                        `Please verify files and try again.`
+                    );
+                }
+
                 // Upload files
                 const manifest = [];
                 for (let i = 0; i < files.length; i++) {
                     const file = files[i];
                     const url = uploadUrls[i];
-                    
+
                     // Upload file to presigned URL
                     await axios.put(url, file, {
                         headers: {
                             'Content-Type': file.type || 'application/octet-stream'
                         }
                     });
-                    
-                    // Calculate SHA256 (simplified - in production use proper hashing)
-                    const sha256 = btoa(file.name + file.size).substring(0, 64);
-                    
+
+                    // Calculate real SHA-256 hash using Web Crypto API
+                    const sha256 = await calculateFileSHA256(file);
+
                     manifest.push({
                         filename: file.name,
                         size_bytes: file.size,
                         sha256: sha256,
-                        storage_key: `cases/${caseId}/runs/${runId}/docs/${file.name}`,
+                        storage_key: `clients/${clientId}/cases/${caseId}/runs/${runId}/docs/${file.name}`,
                         mime_type: file.type
                     });
                 }
@@ -423,24 +459,38 @@
             try {
                 const response = await axios.get(`${API_URL}/v1/runs/${runId}/events`);
                 const events = response.data.events;
-                
+
                 const tbody = document.getElementById('eventsTableBody');
                 tbody.innerHTML = '';
-                
+
                 events.forEach(event => {
                     const row = tbody.insertRow();
-                    row.innerHTML = `
-                        <td class="px-4 py-2 border-b">${event.number}</td>
-                        <td class="px-4 py-2 border-b">${event.date || 'N/A'}</td>
-                        <td class="px-4 py-2 border-b text-sm">${event.event_particulars}</td>
-                        <td class="px-4 py-2 border-b text-sm">${event.citation || ''}</td>
-                        <td class="px-4 py-2 border-b text-sm">${event.document_reference}</td>
-                    `;
+
+                    // Create cells with proper XSS protection: use textContent for untrusted data
+                    const cell1 = row.insertCell();
+                    cell1.className = 'px-4 py-2 border-b';
+                    cell1.textContent = event.number;
+
+                    const cell2 = row.insertCell();
+                    cell2.className = 'px-4 py-2 border-b';
+                    cell2.textContent = event.date || 'N/A';
+
+                    const cell3 = row.insertCell();
+                    cell3.className = 'px-4 py-2 border-b text-sm';
+                    cell3.textContent = event.event_particulars;
+
+                    const cell4 = row.insertCell();
+                    cell4.className = 'px-4 py-2 border-b text-sm';
+                    cell4.textContent = event.citation || '';
+
+                    const cell5 = row.insertCell();
+                    cell5.className = 'px-4 py-2 border-b text-sm';
+                    cell5.textContent = event.document_reference;
                 });
-                
+
                 document.getElementById('eventsSection').classList.remove('hidden');
                 currentRunId = runId;
-                
+
             } catch (error) {
                 console.error('Load events error:', error);
                 alert('Failed to load events');

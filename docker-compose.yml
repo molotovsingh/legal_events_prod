@@ -64,6 +64,7 @@ services:
       DATABASE_URL: postgresql://legal_user:legal_pass_2024@postgres:5432/legal_events
       REDIS_URL: redis://redis:6379
       MINIO_ENDPOINT: minio:9000
+      MINIO_PUBLIC_ENDPOINT: localhost:9000
       MINIO_ACCESS_KEY: minioadmin
       MINIO_SECRET_KEY: minioadmin123
       MINIO_BUCKET: legal-documents
