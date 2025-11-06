@@ -38,6 +38,10 @@ google-generativeai>=0.8.0
 requests>=2.32.0
 python-dateutil>=2.9.0
 
+# Document Processing
+PyMuPDF>=1.24.0  # For PDF text extraction (fitz module)
+extract-msg>=0.48.0  # For MS Office document parsing (MSG, MSG files)
+
 # Event Extraction (LangExtract for Gemini support)
 # Note: Installed from git in Dockerfile, not from PyPI
 # langextract@git+https://github.com/google/langextract.git

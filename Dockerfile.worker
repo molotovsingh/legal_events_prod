@@ -12,6 +12,7 @@ RUN apt-get update && apt-get install -y \
     libpq-dev \
     tesseract-ocr \
     poppler-utils \
+    libmupdf-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy worker-specific code only
