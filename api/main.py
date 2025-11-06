@@ -186,7 +186,8 @@ async def create_client(
     db.commit()
     db.refresh(db_client)
 
-    logger.info(f"Created client: {db_client.name} (ID: {db_client.id}) by user {current_user.username}")
+    username = current_user.username if current_user else "anonymous"
+    logger.info(f"Created client: {db_client.name} (ID: {db_client.id}) by user {username}")
     return db_client
 
 
@@ -234,7 +235,8 @@ async def create_case(
     db.commit()
     db.refresh(db_case)
 
-    logger.info(f"Created case: {db_case.name} (ID: {db_case.id}) by user {current_user.username}")
+    username = current_user.username if current_user else "anonymous"
+    logger.info(f"Created case: {db_case.name} (ID: {db_case.id}) by user {username}")
     return db_case
 
 
@@ -273,7 +275,8 @@ async def assign_user_to_case(
     db.add(db_assignment)
     db.commit()
 
-    logger.info(f"User {assignment.user_id} assigned to case {case_id} by {current_user.username}")
+    username = current_user.username if current_user else "anonymous"
+    logger.info(f"User {assignment.user_id} assigned to case {case_id} by {username}")
     return {"message": "User assigned successfully"}
 
 
@@ -321,7 +324,8 @@ async def create_run(
         )
         upload_urls.append(url)
 
-    logger.info(f"Created run {db_run.id} for client {case.client_id} with {len(upload_urls)} upload URLs by {current_user.username}")
+    username = current_user.username if current_user else "anonymous"
+    logger.info(f"Created run {db_run.id} for client {case.client_id} with {len(upload_urls)} upload URLs by {username}")
 
     return {
         "run_id": db_run.id,
@@ -414,7 +418,8 @@ async def start_run(
         except Exception as e:
             logger.warning(f"Failed to cache idempotency result: {e}")
 
-    logger.info(f"Started run {run_id} with job {job_id} by {current_user.username}")
+    username = current_user.username if current_user else "anonymous"
+    logger.info(f"Started run {run_id} with job {job_id} by {username}")
 
     return response
 
