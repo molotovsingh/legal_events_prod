@@ -37,18 +37,36 @@ async def lifespan(app: FastAPI):
     """
     # Startup
     logger.info("🚀 Starting Legal Events API v2...")
-    
+
+    # Validate required environment variables
+    logger.info("🔐 Validating security configuration...")
+    required_vars = ["JWT_SECRET_KEY", "DATABASE_URL"]
+    missing_vars = []
+
+    for var_name in required_vars:
+        if not os.getenv(var_name):
+            missing_vars.append(var_name)
+
+    if missing_vars:
+        error_msg = f"CRITICAL: Missing required environment variables: {', '.join(missing_vars)}"
+        logger.error(error_msg)
+        raise RuntimeError(error_msg)
+
+    logger.info("✅ Environment variables validated")
+
     # Initialize database
     init_db()
     logger.info("✅ Database initialized")
-    
+
     # Initialize storage
     storage = MinioStorage()
     storage.ensure_bucket()
     logger.info("✅ MinIO storage initialized")
-    
+
+    logger.info("🔒 Security: Authentication ENABLED (JWT required for write operations)")
+
     yield
-    
+
     # Shutdown
     logger.info("👋 Shutting down Legal Events API...")
 
