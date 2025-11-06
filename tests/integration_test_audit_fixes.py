@@ -8,10 +8,16 @@ import json
 import asyncio
 from datetime import datetime
 import httpx
+import uuid
 
 # Configuration
 API_URL = "http://localhost:8000"
 TIMEOUT = 30.0
+
+
+def get_unique_ref_code():
+    """Generate unique reference code for tests"""
+    return f"TEST_{uuid.uuid4().hex[:8].upper()}"
 
 
 class TestStorageTenancyIsolation:
@@ -24,15 +30,15 @@ class TestStorageTenancyIsolation:
             # Create a client
             client_resp = await client.post(
                 f"{API_URL}/v1/clients",
-                json={"name": "Test Client", "reference_code": "TEST001"}
+                json={"name": "Test Client", "reference_code": get_unique_ref_code()}
             )
             assert client_resp.status_code == 200
             client_id = client_resp.json()["id"]
 
             # Create a case
             case_resp = await client.post(
-                f"{API_URL}/v1/clients/{client_id}/cases",
-                json={"name": "Test Case", "description": "Testing tenancy"}
+                f"{API_URL}/v1/cases",
+                json={"name": "Test Case", "description": "Testing tenancy", "client_id": client_id}
             )
             assert case_resp.status_code == 200
             case_id = case_resp.json()["id"]
@@ -62,13 +68,13 @@ class TestIdempotencyKey:
             # Setup: Create client and case
             client_resp = await client.post(
                 f"{API_URL}/v1/clients",
-                json={"name": "Idempotency Test Client", "reference_code": "IDEMP001"}
+                json={"name": "Idempotency Test Client", "reference_code": get_unique_ref_code()}
             )
             client_id = client_resp.json()["id"]
 
             case_resp = await client.post(
-                f"{API_URL}/v1/clients/{client_id}/cases",
-                json={"name": "Idempotency Test Case"}
+                f"{API_URL}/v1/cases",
+                json={"name": "Idempotency Test Case", "client_id": client_id}
             )
             case_id = case_resp.json()["id"]
 
@@ -111,13 +117,13 @@ class TestSSEStreamConnection:
             # Create a test run first
             client_resp = await client.post(
                 f"{API_URL}/v1/clients",
-                json={"name": "SSE Test Client", "reference_code": "SSE001"}
+                json={"name": "SSE Test Client", "reference_code": get_unique_ref_code()}
             )
             client_id = client_resp.json()["id"]
 
             case_resp = await client.post(
-                f"{API_URL}/v1/clients/{client_id}/cases",
-                json={"name": "SSE Test Case"}
+                f"{API_URL}/v1/cases",
+                json={"name": "SSE Test Case", "client_id": client_id}
             )
             case_id = case_resp.json()["id"]
 
