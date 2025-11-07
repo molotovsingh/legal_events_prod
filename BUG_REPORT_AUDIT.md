@@ -1,7 +1,34 @@
 # Bug Report - Code Audit
-**Date:** 2025-01-XX  
-**Auditor:** AI Code Review  
+**Date:** 2025-01-XX
+**Auditor:** AI Code Review
 **Scope:** Full codebase review for bugs (not fixed)
+**Last Updated:** 2025-11-07 (v0.5.1)
+
+---
+
+## STATUS TRACKING (as of v0.5.1)
+
+**Bug Reports Retired:** 10 bug reports retired on 2025-11-07 (see `bug_reports/retired/RETIREMENT_LOG.md`)
+
+**Code Audit Status:**
+- ✅ **Bug #2 (Critical):** FIXED in v0.4.3 - Admin role enum comparison corrected
+- ⚠️ **Bug #4 (High):** PARTIALLY ADDRESSED - Event-driven architecture reduces risk
+- ✅ **Bug #14 (Low):** FIXED - JWT secret validation on startup (commit 352ca97)
+- 🔍 **Bug #1 (Critical):** OPEN - IndexError in export_run needs defensive check
+- 🔍 **Bug #3 (Medium):** OPEN - Pagination logic (safe but could be clearer)
+- 🔍 **Bug #5 (High):** OPEN - Race condition in idempotency check
+- 🔍 **Bug #6 (High):** OPEN - Null check for relationship access
+- 🔍 **Bug #7 (High):** OPEN - Temp file cleanup
+- 🔍 **Bugs #8-18:** OPEN - Various medium/low priority issues
+
+**Overall Progress:**
+- **Critical Bugs:** 1/3 fixed (33%)
+- **High Priority:** 1/4 addressed (25%)
+- **Medium Priority:** 0/5 fixed (0%)
+- **Low Priority:** 1/6 fixed (17%)
+- **Total:** 3/18 resolved (17%)
+
+**Note:** Many bugs were addressed through architectural refactoring rather than direct fixes. Event-driven architecture (v0.4.0) and infra/ module extraction (d268d05) improved overall system resilience.
 
 ---
 
