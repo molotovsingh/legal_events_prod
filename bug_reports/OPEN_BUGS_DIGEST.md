@@ -54,7 +54,7 @@ Purpose: Snapshot of open issues with priorities, suggested owners, and referenc
   - Owner: Frontend
   - Action: Add runs-by-case endpoint and render real runs; or rename temporarily
   - Reports: BUG_REPORT_20251106T011941Z.md
-  - Status: [ ] TODO
+  - Status: [x] RESOLVED (Renamed panel to “Browse Cases”)
 
 ## P2 — Minor / Docs / Ops
 
@@ -62,7 +62,7 @@ Purpose: Snapshot of open issues with priorities, suggested owners, and referenc
   - Owner: Ops/Infra
   - Action: Document CORS policy and quick verification
   - Reports: BUG_REPORT_20251105T130411Z.md
-  - Status: [ ] TODO
+  - Status: [x] RESOLVED (docs/MINIO_CORS_SETUP.md)
 
 - MinIO public endpoint replacement robustness
   - Owner: Backend
@@ -80,7 +80,7 @@ Purpose: Snapshot of open issues with priorities, suggested owners, and referenc
   - Owner: Frontend/Docs
   - Action: Document current presign behavior and storage key schema
   - Reports: BUG_REPORT_20251105T125656Z.md
-  - Status: [ ] TODO
+  - Status: [x] RESOLVED (Two-step filename-aware presign)
 
 ## Recently Resolved (to archive when verified)
 
@@ -96,6 +96,29 @@ Purpose: Snapshot of open issues with priorities, suggested owners, and referenc
   - Reports: BUG_REPORT_20251105T170226Z.md (Resolved section)
   - Status: [ ] Ready to archive after verification
 
+## Resolved — Commit References
+
+- BUG_REPORT_20251105T125656Z.md (Presigned Upload Key Mismatch)
+  - Commit: d3fb9be — fix(storage): resolve presigned upload key mismatch causing worker failures
+
+- BUG_REPORT_20251105T130411Z.md (MinIO CORS Documentation)
+  - Commit: 56d90fe — fix: Fix SSE DB session lifecycle and add MinIO CORS documentation (docs/MINIO_CORS_SETUP.md)
+
+- BUG_REPORT_20251106T011941Z.md (UI “Recent Runs” misleading)
+  - Commit: 1feb33c — fix(ui): rename misleading "Recent Runs" section to "Browse Cases"
+
+- BUG_REPORT_20251106T012024Z.md (UI long text overflow)
+  - Commit: 214dd16 — fix(ui): truncate long event text with hover tooltips
+
+- BUG_REPORT_20251106T033605Z.md (Alembic enum migrations)
+  - Commit: 01b3058 — docs(migrations): add comprehensive enum migration patterns guide (docs/ENUM_MIGRATIONS.md)
+
+- BUG_REPORT_20251106T033627Z.md (Docling OCR memory)
+  - Commit: 7869ef2 — docs(ocr): add comprehensive OCR memory management guide (docs/OCR_MEMORY_MANAGEMENT.md)
+
+- BUG_REPORT_20251106T033703Z.md (Anthropic SDK audit)
+  - Commit: b38a305 — docs(audit): complete Anthropic SDK integration audit (docs/ANTHROPIC_SDK_AUDIT.md)
+
 ## Notes
 
 - Guardrails to enforce in all fixes:
@@ -103,4 +126,3 @@ Purpose: Snapshot of open issues with priorities, suggested owners, and referenc
   - Worker read-only for clients/cases/runs/documents; writes events/artifacts only
   - Storage keys include `clients/{client_id}/cases/{case_id}/runs/{run_id}/…`
   - Auth/secrets safe for production (no default creds)
-
