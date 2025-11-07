@@ -83,7 +83,8 @@ def process_run(run_id: int, provider: str = "openrouter", model: str = None) ->
         
         # READ documents to process (read-only)
         documents = db.query(Document).filter(
-            Document.run_id == run_id
+            Document.run_id == run_id,
+            Document.status == DocumentStatus.PENDING
         ).all()
         
         if not documents:

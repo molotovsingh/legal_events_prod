@@ -191,7 +191,7 @@ async def require_case_access(
         return True
     
     # Check case assignment
-    from .models import CaseAssignment
+    from infra.models import CaseAssignment
     
     assignment = db.query(CaseAssignment).filter(
         CaseAssignment.case_id == case_id,
