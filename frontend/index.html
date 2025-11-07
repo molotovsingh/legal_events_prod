@@ -92,15 +92,18 @@
             </div>
         </div>
 
-        <!-- Recent Runs -->
+        <!-- Browse Cases -->
         <div class="bg-white shadow-lg rounded-lg mb-8 p-6">
-            <h2 class="text-xl font-bold text-gray-800 mb-4">📊 Recent Runs</h2>
-            <button onclick="loadRuns()" 
+            <h2 class="text-xl font-bold text-gray-800 mb-4">📁 Browse Cases</h2>
+            <p class="text-sm text-gray-600 mb-3">
+                <em>Note: Runs view coming soon. Currently showing cases grouped by client.</em>
+            </p>
+            <button onclick="loadRuns()"
                     class="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600 mb-4">
-                Refresh Runs
+                Refresh Cases
             </button>
             <div id="runsList" class="space-y-2">
-                <p class="text-gray-500">No runs loaded yet...</p>
+                <p class="text-gray-500">No cases loaded yet...</p>
             </div>
         </div>
 
@@ -438,13 +441,13 @@
                     }
                 }
                 
-                document.getElementById('runsList').innerHTML = runsHtml || 
-                    '<p class="text-gray-500">No runs found. Create a client and case first.</p>';
-                
+                document.getElementById('runsList').innerHTML = runsHtml ||
+                    '<p class="text-gray-500">No cases found. Create a client and case first.</p>';
+
             } catch (error) {
-                console.error('Load runs error:', error);
-                document.getElementById('runsList').innerHTML = 
-                    '<p class="text-red-600">Failed to load runs</p>';
+                console.error('Load cases error:', error);
+                document.getElementById('runsList').innerHTML =
+                    '<p class="text-red-600">Failed to load cases</p>';
             }
         }
 
