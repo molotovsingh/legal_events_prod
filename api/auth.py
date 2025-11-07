@@ -14,7 +14,7 @@ from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
 from infra.database import get_db
-from infra.models import User
+from infra.models import User, UserRole
 
 logger = logging.getLogger(__name__)
 
@@ -154,7 +154,7 @@ async def require_admin(
             headers={"WWW-Authenticate": "Bearer"},
         )
     
-    if current_user.role != "admin":
+    if current_user.role != UserRole.ADMIN:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin access required"
@@ -187,7 +187,7 @@ async def require_case_access(
         return True
     
     # Admins have access to all cases
-    if current_user.role == "admin":
+    if current_user.role == UserRole.ADMIN:
         return True
     
     # Check case assignment
