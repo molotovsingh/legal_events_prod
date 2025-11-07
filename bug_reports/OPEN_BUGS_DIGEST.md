@@ -1,6 +1,6 @@
 # Open Bugs Digest
 
-Updated: 2025-11-06 03:16:17Z (UTC)
+Updated: 2025-11-07 14:30:00Z (UTC)
 
 Purpose: Snapshot of open issues with priorities, suggested owners, and references to full reports.
 
@@ -16,7 +16,7 @@ Purpose: Snapshot of open issues with priorities, suggested owners, and referenc
   - Owner: Infra/Worker
   - Action: Install in worker image; choose single source for langextract
   - Reports: BUG_REPORT_20251105T111630Z.md
-  - Status: [ ] TODO
+  - Status: [x] RESOLVED (False positive - all dependencies present in requirements.txt)
 
 ## P1 — Major
 
@@ -68,19 +68,68 @@ Purpose: Snapshot of open issues with priorities, suggested owners, and referenc
   - Owner: Backend
   - Action: Use `urllib.parse` to rebuild URLs when swapping endpoint
   - Reports: BUG_REPORT_20251106T031335Z.md
-  - Status: [ ] TODO
+  - Status: [x] RESOLVED (commit 86aca25 - Storage key standardization with validation)
 
 - UI long text truncation (table overflow)
   - Owner: Frontend
   - Action: CSS ellipsis + tooltip/expand for full text
   - Reports: BUG_REPORT_20251106T012024Z.md
-  - Status: [ ] TODO
+  - Status: [x] RESOLVED (commit 214dd16)
 
 - Presign flow clarity (filename mapping)
   - Owner: Frontend/Docs
   - Action: Document current presign behavior and storage key schema
   - Reports: BUG_REPORT_20251105T125656Z.md
   - Status: [x] RESOLVED (Two-step filename-aware presign)
+
+- Docker container resource limits
+  - Owner: Infra/Ops
+  - Action: Add CPU and memory limits to prevent resource exhaustion
+  - Reports: BUG_REPORT_20251107T120000Z.md, BUG_REPORT_20251107T025003Z.md
+  - Status: [x] RESOLVED (commit a8caf1a - All services now have resource limits)
+
+## Recently Resolved (2025-11-07)
+
+**7 production-readiness fixes applied:**
+
+1. **JWT Security** (commit 4efdebb)
+   - Requires explicit JWT_SECRET_KEY in production environments
+   - Fail-fast behavior prevents insecure deployments
+   - Reports: BUG_REPORT_20251107T120000Z.md (Issue #1)
+
+2. **Pagination Validation** (commit 253b505)
+   - Added Query(ge=0, le=1000) validators to API endpoints
+   - Prevents DoS attacks via unbounded limit parameters
+   - Reports: BUG_REPORT_20251107T120000Z.md (Issue #6), BUG_REPORT_20251107T025003Z.md (Issue #6)
+
+3. **Config Validation** (commit 1400833)
+   - Added __post_init__ validation for STUCK_DOCUMENT_HOURS (1-72 hour range)
+   - Fail-fast on invalid configuration
+   - Reports: BUG_REPORT_20251107T120000Z.md (Issue #3), BUG_REPORT_20251107T025003Z.md (Issue #5)
+
+4. **Docker Resource Limits** (commit a8caf1a)
+   - Added CPU/memory limits to all 6 services
+   - Prevents container resource exhaustion
+   - Reports: BUG_REPORT_20251107T120000Z.md (Issue #10), BUG_REPORT_20251107T025003Z.md (Issue #2)
+
+5. **MinIO Timeout Handling** (commit bd31b7a)
+   - Added 30-second timeout with circuit breaker pattern
+   - Prevents API hanging on MinIO network issues
+   - Reports: BUG_REPORT_20251107T120000Z.md (Issue #8), BUG_REPORT_20251107T025003Z.md (Issue #3)
+
+6. **Event Processor Retries** (commit d58290d)
+   - Implemented 3-attempt retry with exponential backoff (1s, 2s, 4s)
+   - Added Dead Letter Queue (DLQ) in Redis for permanently failed events
+   - Reports: BUG_REPORT_20251107T120000Z.md (Issue #4)
+
+7. **Storage Key Standardization** (commit 86aca25)
+   - Created infra/storage_keys.py with validation utilities
+   - Standardized key generation across 3+ locations
+   - Prevents path traversal and key inconsistencies
+
+**Bug reports retired:**
+- bug_reports/retired/BUG_REPORT_20251107T120000Z.md
+- bug_reports/retired/BUG_REPORT_20251107T025003Z.md
 
 ## Recently Resolved (to archive when verified)
 
