@@ -18,6 +18,14 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
 
   # Redis for job queue and caching
   redis:
@@ -32,6 +40,14 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
 
   # MinIO (S3-compatible storage)
   minio:
@@ -51,6 +67,14 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 256M
 
   # FastAPI Backend
   api:
@@ -135,6 +159,14 @@ services:
         PYEOF
         alembic upgrade head
         uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
 
   # Background Worker
   worker:
@@ -162,6 +194,14 @@ services:
       - postgres
       - minio
     command: python -m worker.main
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 4G
+        reservations:
+          cpus: '1'
+          memory: 1G
 
   # Simple UI (initially, we'll enhance Flask before moving to SvelteKit)
   frontend:
@@ -175,6 +215,14 @@ services:
       API_URL: http://api:8000
     depends_on:
       - api
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
 
 volumes:
   postgres_data:
