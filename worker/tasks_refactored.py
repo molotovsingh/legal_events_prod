@@ -81,14 +81,28 @@ def process_run(run_id: int, provider: str = "openrouter", model: str = None) ->
         emitter.emit_run_started(run_id)
         start_time = datetime.utcnow()
         
-        # READ documents to process (read-only)
+        # READ documents to process (read-only) - includes failed docs for retry
+        # Query PENDING and FAILED documents (allows automatic retry)
         documents = db.query(Document).filter(
             Document.run_id == run_id,
-            Document.status == DocumentStatus.PENDING
+            Document.status.in_([DocumentStatus.PENDING, DocumentStatus.FAILED])
         ).all()
         
+        # If no pending/failed, check for stuck PROCESSING documents (>1 hour old)
         if not documents:
-            logger.warning(f"No documents found for run {run_id}")
+            logger.info(f"No pending/failed documents for run {run_id}, checking for stuck documents...")
+            stuck_documents = db.query(Document).filter(
+                Document.run_id == run_id,
+                Document.status == DocumentStatus.PROCESSING,
+                Document.created_at < datetime.utcnow() - timedelta(hours=1)
+            ).all()
+            
+            if stuck_documents:
+                logger.warning(f"Found {len(stuck_documents)} stuck PROCESSING documents for run {run_id}")
+                documents = stuck_documents
+        
+        if not documents:
+            logger.warning(f"No documents to process for run {run_id} (no pending, failed, or stuck docs)")
             emitter.emit_run_failed(run_id, "No documents to process")
             return {"error": "No documents to process"}
         

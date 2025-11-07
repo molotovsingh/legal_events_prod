@@ -157,12 +157,18 @@ class APIEventProcessor:
             logger.info(f"Updated run {event.run_id} to FAILED: {event.error}")
             
     def _handle_document_started(self, db: Session, event: WorkerEvent):
-        """Handle document processing started"""
+        """Handle document processing started - supports retry scenarios"""
         doc = db.query(Document).filter(Document.id == event.document_id).first()
         if doc:
-            doc.status = DocumentStatus.PROCESSING
-            db.commit()
-            logger.debug(f"Updated document {event.document_id} to PROCESSING")
+            # Allow restart from PENDING, FAILED, or stuck PROCESSING states
+            if doc.status in [DocumentStatus.PENDING, DocumentStatus.FAILED, DocumentStatus.PROCESSING]:
+                doc.status = DocumentStatus.PROCESSING
+                doc.error = None  # Clear previous error on retry
+                db.commit()
+                logger.debug(f"Updated document {event.document_id} to PROCESSING (was {doc.status.value})")
+            else:
+                # Document is already SUCCESS - shouldn't be reprocessed
+                logger.warning(f"Document {event.document_id} in unexpected state {doc.status.value} for processing")
             
     def _handle_document_completed(self, db: Session, event: WorkerEvent):
         """Handle document processing completed"""

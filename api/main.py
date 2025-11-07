@@ -544,6 +544,91 @@ async def get_run_artifacts(
     return {"artifacts": artifact_list}
 
 
+@app.put("/v1/runs/{run_id}/retry")
+async def retry_run(
+    run_id: int,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Retry a failed or stuck run.
+    
+    This endpoint:
+    1. Resets FAILED documents to PENDING
+    2. Resets stuck PROCESSING documents (>1 hour old) to PENDING
+    3. Resets run status to QUEUED
+    4. Enqueues new processing job
+    
+    Returns:
+        JSON with retry status and number of documents reset
+    """
+    from datetime import timedelta
+    
+    # Get run
+    run = db.query(Run).filter(Run.id == run_id).first()
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+    
+    # Only allow retry for failed/partial/stuck runs
+    if run.status not in [RunStatus.FAILED, RunStatus.PARTIAL_SUCCESS]:
+        # Check if run is stuck (PROCESSING > 1 hour)
+        if run.status == RunStatus.PROCESSING:
+            if not run.started_at or (datetime.utcnow() - run.started_at).total_seconds() < 3600:
+                raise HTTPException(status_code=400, detail="Run is still processing")
+        else:
+            raise HTTPException(status_code=400, detail=f"Cannot retry run in {run.status.value} state")
+    
+    # Reset FAILED documents to PENDING
+    failed_docs = db.query(Document).filter(
+        Document.run_id == run_id,
+        Document.status == DocumentStatus.FAILED
+    ).all()
+    
+    for doc in failed_docs:
+        doc.status = DocumentStatus.PENDING
+        doc.error = None
+        doc.processed_at = None
+    
+    # Reset stuck PROCESSING documents (>1 hour old)
+    stuck_docs = db.query(Document).filter(
+        Document.run_id == run_id,
+        Document.status == DocumentStatus.PROCESSING,
+        Document.created_at < datetime.utcnow() - timedelta(hours=1)
+    ).all()
+    
+    for doc in stuck_docs:
+        doc.status = DocumentStatus.PENDING
+        doc.processed_at = None
+    
+    # Reset run status
+    run.status = RunStatus.QUEUED
+    run.error = None
+    run.finished_at = None
+    
+    db.commit()
+    
+    # Enqueue new processing job
+    job_id = enqueue_job(
+        "process_run",
+        run_id=run_id,
+        provider=run.provider,
+        model=run.model
+    )
+    
+    username = current_user.email if current_user else "anonymous"
+    logger.info(f"Retrying run {run_id}, reset {len(failed_docs)} failed + {len(stuck_docs)} stuck docs by {username}")
+    
+    return {
+        "status": "accepted",
+        "run_id": run_id,
+        "job_id": job_id,
+        "documents_reset": len(failed_docs) + len(stuck_docs),
+        "failed_documents": len(failed_docs),
+        "stuck_documents": len(stuck_docs)
+    }
+
+
 @app.get("/v1/runs/{run_id}/export")
 async def export_run(
     run_id: int,
