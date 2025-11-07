@@ -3,7 +3,7 @@ FastAPI Application for Legal Events Extraction v2
 Main application entry point with all API routes
 """
 
-from fastapi import FastAPI, Depends, HTTPException, File, UploadFile, BackgroundTasks, Header
+from fastapi import FastAPI, Depends, HTTPException, File, UploadFile, BackgroundTasks, Header, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy.orm import Session
@@ -20,6 +20,7 @@ from infra.database import get_db, init_db
 from infra.models import *
 from .schemas import *
 from infra.storage import MinioStorage
+from infra.storage_keys import generate_document_key, generate_artifact_key
 from infra.queue import enqueue_job
 from core.constants import FIVE_COLUMN_HEADERS
 from core.event_extractor_catalog import get_event_extractor_catalog
@@ -201,11 +202,16 @@ async def create_client(
 
 @app.get("/v1/clients", response_model=List[ClientResponse])
 async def list_clients(
-    skip: int = 0,
-    limit: int = 100,
+    skip: int = Query(default=0, ge=0, description="Number of records to skip"),
+    limit: int = Query(default=100, ge=1, le=1000, description="Maximum number of records to return"),
     db: Session = Depends(get_db)
 ):
-    """List all clients"""
+    """List all clients with pagination validation
+
+    Pagination limits:
+    - skip: Must be >= 0
+    - limit: Must be between 1 and 1000
+    """
     clients = db.query(Client).offset(skip).limit(limit).all()
     return clients
 
@@ -338,7 +344,13 @@ async def create_run(
     if run.filenames:
         presigned_uploads = []
         for filename in run.filenames:
-            storage_key = f"clients/{case.client_id}/cases/{run.case_id}/runs/{db_run.id}/docs/{filename}"
+            # Use standardized storage key generation
+            storage_key = generate_document_key(
+                client_id=case.client_id,
+                case_id=run.case_id,
+                run_id=db_run.id,
+                filename=filename
+            )
             upload_url = storage.generate_upload_url(
                 client_id=case.client_id,
                 case_id=run.case_id,
@@ -523,16 +535,21 @@ async def get_run(
 @app.get("/v1/runs/{run_id}/events")
 async def get_run_events(
     run_id: int,
-    cursor: Optional[int] = None,
-    limit: int = 100,
+    cursor: Optional[int] = Query(default=None, ge=0, description="Cursor for pagination (event ID)"),
+    limit: int = Query(default=100, ge=1, le=1000, description="Maximum number of events to return"),
     db: Session = Depends(get_db)
 ):
-    """Get events extracted in a run (paginated)"""
+    """Get events extracted in a run (paginated)
+
+    Pagination limits:
+    - cursor: Must be >= 0 if provided
+    - limit: Must be between 1 and 1000
+    """
     query = db.query(Event).filter(Event.run_id == run_id)
-    
-    if cursor:
+
+    if cursor is not None:
         query = query.filter(Event.id > cursor)
-    
+
     events = query.order_by(Event.id).limit(limit).all()
     
     # Convert to response format
@@ -783,7 +800,13 @@ async def export_run(
     
     # Upload to storage
     case = db.query(Case).filter(Case.id == events[0].run.case_id).first()
-    storage_key = f"clients/{case.client_id}/cases/{case.id}/runs/{run_id}/artifacts/{run_id}.{fmt}"
+    # Use standardized storage key generation
+    storage_key = generate_artifact_key(
+        client_id=case.client_id,
+        case_id=case.id,
+        run_id=run_id,
+        format=fmt
+    )
     
     storage.upload_bytes(storage_key, content_bytes)
     
