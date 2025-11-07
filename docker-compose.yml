@@ -61,6 +61,8 @@ services:
     ports:
       - "8000:8000"
     environment:
+      # Application Environment (development enables JWT fallback)
+      APP_ENV: ${APP_ENV:-development}
       DATABASE_URL: postgresql://${POSTGRES_USER:-legal_user}:${POSTGRES_PASSWORD:-generate-strong-password}@postgres:5432/${POSTGRES_DB:-legal_events}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379}
       MINIO_ENDPOINT: ${MINIO_ENDPOINT:-minio:9000}
@@ -68,7 +70,7 @@ services:
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-generate-strong-password}
       MINIO_BUCKET: ${MINIO_BUCKET:-legal-documents}
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev-secret-CHANGE-IN-PRODUCTION}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-}
       PYTHONUNBUFFERED: 1
       # Copy over any existing API keys from .env
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
@@ -141,6 +143,8 @@ services:
       dockerfile: Dockerfile.worker
     container_name: legal_events_worker
     environment:
+      # Application Environment
+      APP_ENV: ${APP_ENV:-development}
       DATABASE_URL: postgresql://${POSTGRES_USER:-legal_user}:${POSTGRES_PASSWORD:-generate-strong-password}@postgres:5432/${POSTGRES_DB:-legal_events}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379}
       MINIO_ENDPOINT: ${MINIO_ENDPOINT:-minio:9000}

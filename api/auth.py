@@ -19,14 +19,26 @@ from infra.models import User, UserRole
 logger = logging.getLogger(__name__)
 
 # Configuration
+# Get environment mode (default to 'production' for safety-by-default)
+APP_ENV = os.getenv("APP_ENV", "production").lower()
 SECRET_KEY = os.getenv("JWT_SECRET_KEY")
+
 if not SECRET_KEY:
-    # Development fallback - operators MUST override in production
-    SECRET_KEY = "dev-secret-CHANGE-IN-PRODUCTION"
-    logger.warning(
-        "⚠️  Using insecure development JWT secret. "
-        "Set JWT_SECRET_KEY environment variable for production security!"
-    )
+    if APP_ENV == "development":
+        # Safe development fallback (local testing only)
+        SECRET_KEY = "dev-secret-ONLY-FOR-LOCAL-TESTING-DO-NOT-USE-IN-PRODUCTION"
+        logger.warning(
+            "⚠️  Using insecure development JWT secret. "
+            "This is ONLY safe for local development (APP_ENV=development). "
+            "Generate a production key with: openssl rand -hex 32"
+        )
+    else:
+        # Production requires explicit configuration - fail fast
+        raise ValueError(
+            f"JWT_SECRET_KEY environment variable is required in {APP_ENV} mode. "
+            "Generate a secure secret with: openssl rand -hex 32\n"
+            "Then set: JWT_SECRET_KEY=<generated-key> in your .env file or environment"
+        )
 
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 24 hours
