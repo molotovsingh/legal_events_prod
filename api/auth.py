@@ -132,6 +132,31 @@ async def get_current_user(
     return user
 
 
+async def require_auth(
+    current_user: Optional[User] = Depends(get_current_user)
+) -> User:
+    """
+    Require authentication (any valid user)
+    
+    Args:
+        current_user: Current authenticated user
+        
+    Returns:
+        User if authenticated
+        
+    Raises:
+        HTTPException: If not authenticated
+    """
+    if not current_user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    return current_user
+
+
 async def require_admin(
     current_user: Optional[User] = Depends(get_current_user)
 ) -> User:

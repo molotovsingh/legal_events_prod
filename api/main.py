@@ -24,7 +24,7 @@ from infra.queue import enqueue_job
 from core.constants import FIVE_COLUMN_HEADERS
 from core.event_extractor_catalog import get_event_extractor_catalog
 # ✅ Authentication enabled - requires valid JWT Bearer token
-from .auth import get_current_user, create_access_token
+from .auth import get_current_user, create_access_token, require_auth
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -182,7 +182,7 @@ async def health_check(db: Session = Depends(get_db)):
 async def create_client(
     client: ClientCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(require_auth)  # Enforce authentication
 ):
     """Create a new client organization"""
     db_client = Client(
@@ -194,8 +194,8 @@ async def create_client(
     db.commit()
     db.refresh(db_client)
 
-    username = current_user.email if current_user else "anonymous"
-    logger.info(f"Created client: {db_client.name} (ID: {db_client.id}) by user {username}")
+    # current_user is now guaranteed by require_auth dependency
+    logger.info(f"Created client: {db_client.name} (ID: {db_client.id}) by user {current_user.email}")
     return db_client
 
 
@@ -230,7 +230,7 @@ async def get_client(
 async def create_case(
     case: CaseCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(require_auth)  # Enforce authentication
 ):
     """Create a new case"""
     # Validate client exists
@@ -248,8 +248,8 @@ async def create_case(
     db.commit()
     db.refresh(db_case)
 
-    username = current_user.email if current_user else "anonymous"
-    logger.info(f"Created case: {db_case.name} (ID: {db_case.id}) by user {username}")
+    # current_user is now guaranteed by require_auth dependency
+    logger.info(f"Created case: {db_case.name} (ID: {db_case.id}) by user {current_user.email}")
     return db_case
 
 
@@ -268,7 +268,7 @@ async def assign_user_to_case(
     case_id: int,
     assignment: CaseAssignmentCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(require_auth)  # Enforce authentication
 ):
     """Assign a user to a case"""
     # Check if assignment already exists
@@ -288,8 +288,8 @@ async def assign_user_to_case(
     db.add(db_assignment)
     db.commit()
 
-    username = current_user.email if current_user else "anonymous"
-    logger.info(f"User {assignment.user_id} assigned to case {case_id} by {username}")
+    # current_user is now guaranteed by require_auth dependency
+    logger.info(f"User {assignment.user_id} assigned to case {case_id} by {current_user.email}")
     return {"message": "User assigned successfully"}
 
 
@@ -301,7 +301,7 @@ async def assign_user_to_case(
 async def create_run(
     run: RunCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(require_auth)  # Enforce authentication
 ):
     """
     Create a new run and get presigned upload URLs
@@ -337,8 +337,8 @@ async def create_run(
         )
         upload_urls.append(url)
 
-    username = current_user.email if current_user else "anonymous"
-    logger.info(f"Created run {db_run.id} for client {case.client_id} with {len(upload_urls)} upload URLs by {username}")
+    # current_user is now guaranteed by require_auth dependency
+    logger.info(f"Created run {db_run.id} for client {case.client_id} with {len(upload_urls)} upload URLs by {current_user.email}")
 
     return {
         "run_id": db_run.id,
@@ -354,7 +354,7 @@ async def start_run(
     manifest: RunManifest,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(require_auth)  # Enforce authentication
 ):
     """
     Start processing a run with uploaded documents
@@ -431,8 +431,8 @@ async def start_run(
         except Exception as e:
             logger.warning(f"Failed to cache idempotency result: {e}")
 
-    username = current_user.email if current_user else "anonymous"
-    logger.info(f"Started run {run_id} with job {job_id} by {username}")
+    # current_user is now guaranteed by require_auth dependency
+    logger.info(f"Started run {run_id} with job {job_id} by {current_user.email}")
 
     return response
 
@@ -564,6 +564,14 @@ async def retry_run(
         JSON with retry status and number of documents reset
     """
     from datetime import timedelta
+    
+    # Enforce authentication - critical security fix
+    if not current_user:
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     
     # Get run
     run = db.query(Run).filter(Run.id == run_id).first()
