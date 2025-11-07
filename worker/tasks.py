@@ -1,4 +1,12 @@
 """
+DEPRECATED: Background Worker Tasks (v0.3.0 and earlier)
+
+⚠️  This module is deprecated as of v0.4.0.
+Use `worker.tasks_refactored` instead.
+
+The refactored version maintains strict service boundaries by emitting events
+to Redis instead of directly mutating API-owned entities (runs/documents).
+
 Background Worker Tasks
 Processes documents using the existing legal pipeline
 
@@ -14,6 +22,11 @@ Imports forbidden (violate service boundaries):
 - api.queue: Business logic
 - api.schemas: Service-specific schemas
 - Any api business logic
+
+MIGRATION GUIDE:
+- All job enqueuing automatically uses worker.tasks_refactored
+- Old jobs referencing this module will fail at runtime
+- Replace any direct task invocations with infra.queue.enqueue_job()
 """
 
 import os

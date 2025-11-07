@@ -47,12 +47,13 @@ def enqueue_job(
         # Map function names to actual functions
         # Note: Using function names as strings to avoid import issues
         # The worker will resolve these at execution time
+        # Use refactored tasks that maintain service boundaries
         if func_name == "process_run":
-            job = queue.enqueue("worker.tasks.process_run", **kwargs)
+            job = queue.enqueue("worker.tasks_refactored.process_run", **kwargs)
         elif func_name == "process_document":
-            job = queue.enqueue("worker.tasks.process_document", **kwargs)
+            job = queue.enqueue("worker.tasks_refactored.process_document", **kwargs)
         elif func_name == "generate_artifacts":
-            job = queue.enqueue("worker.tasks.generate_artifacts", **kwargs)
+            job = queue.enqueue("worker.tasks_refactored.export_run_events", **kwargs)
         else:
             raise ValueError(f"Unknown function: {func_name}")
 

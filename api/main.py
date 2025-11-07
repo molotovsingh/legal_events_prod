@@ -39,6 +39,12 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("🚀 Starting Legal Events API v2...")
 
+    # Start the event processor to handle worker status updates (service boundary enforcement)
+    from api.event_processor import start_event_processor, stop_event_processor
+    redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
+    start_event_processor(redis_url)
+    logger.info("✅ Event processor started - service boundaries enforced")
+
     # Validate required environment variables
     logger.info("🔐 Validating security configuration...")
     required_vars = ["JWT_SECRET_KEY", "DATABASE_URL"]
@@ -87,6 +93,8 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     logger.info("👋 Shutting down Legal Events API...")
+    stop_event_processor()
+    logger.info("✅ Event processor stopped")
 
 
 # Create FastAPI app

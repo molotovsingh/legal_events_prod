@@ -62,6 +62,71 @@ docker compose -f docker-compose.yml up -d --scale worker=3
 
 ---
 
+## Event-Driven Architecture (v0.4.0+)
+
+### Overview
+The system has been upgraded to use event-driven communication between Worker and API services, ensuring strict service boundary compliance and enabling independent scaling.
+
+### Worker → API Communication Pattern
+- **Worker:** Processes documents, emits status events via Redis pub/sub
+- **API:** Subscribes to worker events, updates API-owned entities (runs/documents)
+- **Result:** Clean service boundaries, no direct database mutations across services
+
+### Key Components
+
+#### 1. Event System (`infra/worker_events.py`)
+- `WorkerEventEmitter`: Worker-side component that publishes events to Redis
+- `WorkerEventConsumer`: API-side component that subscribes to events
+- `WorkerEvent`: Event dataclass with JSON serialization
+- Supports run lifecycle events: `RUN_STARTED`, `RUN_COMPLETED`, `RUN_FAILED`
+- Supports document lifecycle events: `DOCUMENT_STARTED`, `DOCUMENT_COMPLETED`, `DOCUMENT_FAILED`
+- Persists events in Redis with 7-day expiry for audit trail
+
+#### 2. Event Processor (`api/event_processor.py`)
+- `APIEventProcessor`: Runs in background thread consuming Redis events
+- Updates Run/Document status based on worker events
+- Maintains timing metadata (total_seconds, docling_seconds, extractor_seconds)
+- Tracks cost estimates (cost_usd)
+- Handles all lifecycle transitions with proper error handling
+
+#### 3. Refactored Worker Tasks (`worker/tasks_refactored.py`)
+- **CANONICAL implementation** for worker processing
+- **Old `worker/tasks.py` is deprecated** - use `tasks_refactored.py` exclusively
+- Emits events instead of directly mutating Run/Document status
+- READ-ONLY access to clients, cases, runs, documents
+- WRITE-ONLY access to events, artifacts (worker's primary output)
+- All job routing via `infra/queue.py` automatically uses refactored tasks
+
+### Operational Changes
+- Event processor auto-starts on API startup (lifespan context manager)
+- Event processor gracefully shuts down on API shutdown
+- Job enqueuing automatically routes to `worker.tasks_refactored`
+- No changes needed to API endpoints - all backward compatible
+
+### Monitoring & Debugging
+```bash
+# Monitor live event stream
+redis-cli SUBSCRIBE "worker:events"
+
+# Check event history for a specific run
+redis-cli LRANGE "worker:events:history:123" 0 -1
+
+# Check queue status
+redis-cli LLEN "rq:queue:default"
+redis-cli LLEN "rq:queue:failed"
+```
+
+### What Changed in v0.4.0
+- ✅ Added `infra/worker_events.py` - Redis pub/sub event system
+- ✅ Added `api/event_processor.py` - Background event consumer thread
+- ✅ Added `worker/tasks_refactored.py` - Service boundary compliant tasks
+- ✅ Updated `api/main.py` - Event processor lifecycle management
+- ✅ Updated `infra/queue.py` - Job routing to refactored tasks
+- ✅ Added `docs/SERVICE_BOUNDARIES.md` - Comprehensive architecture guide
+- ✅ Marked `worker/tasks.py` as deprecated (kept for reference only)
+
+---
+
 ## Technical Debt (v0.3.0 Sprint)
 
 ### Event Provider Import Failures
