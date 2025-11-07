@@ -14,7 +14,7 @@ import os
 import logging
 import tempfile
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 import pandas as pd
 import json
@@ -93,9 +93,9 @@ def process_run(run_id: int, provider: str = "openrouter", model: str = None) ->
         
         # Initialize pipeline
         pipeline = LegalEventsPipeline(
-            provider=provider,
-            model_override=model,
-            store_artifacts=True
+            event_extractor=provider,
+            runtime_model=model,
+            doc_extractor=None  # Use default
         )
         
         # Track processing stats
@@ -128,11 +128,23 @@ def process_run(run_id: int, provider: str = "openrouter", model: str = None) ->
                 # Process with pipeline
                 emitter.emit_progress(run_id, f"Extracting text from {doc.filename}", doc.id)
                 
-                results = pipeline.process_documents(
-                    file_paths=[tmp_path],
-                    output_dir=tempfile.mkdtemp(),
-                    case_name=f"run_{run_id}"
-                )
+                # Create a file-like object for the pipeline
+                class FileWrapper:
+                    def __init__(self, path, name):
+                        with open(path, 'rb') as f:
+                            self.content = f.read()
+                        self.name = name
+                    def read(self):
+                        return self.content
+                
+                file_obj = FileWrapper(tmp_path, doc.filename)
+                df, warning = pipeline.process_documents_for_legal_events([file_obj])
+                
+                # Convert DataFrame to event records
+                if not df.empty:
+                    results = {"events": df.to_dict('records')}
+                else:
+                    results = {"events": []}
                 
                 # WRITE events (worker's primary output)
                 events_created = 0
@@ -141,11 +153,12 @@ def process_run(run_id: int, provider: str = "openrouter", model: str = None) ->
                         event = Event(
                             run_id=run_id,
                             document_id=doc.id,
-                            event_type=event_data.get("event_type", "Unknown"),
-                            event_date=event_data.get("date"),
-                            description=event_data.get("description"),
-                            parties=json.dumps(event_data.get("parties", [])),
-                            metadata=event_data
+                            number=event_data.get("number", events_created + 1),
+                            date=event_data.get("date", "Date not available"),
+                            event_particulars=event_data.get("event_particulars", ""),
+                            citation=event_data.get("citation", ""),
+                            document_reference=event_data.get("document_reference", doc.filename),
+                            confidence_score=event_data.get("confidence_score")
                         )
                         db.add(event)
                         db.commit()
@@ -153,24 +166,8 @@ def process_run(run_id: int, provider: str = "openrouter", model: str = None) ->
                         emitter.emit_event_created(run_id, event.id, doc.id)
                 
                 # WRITE artifacts (worker's secondary output)
-                if results and results.get("artifacts"):
-                    for artifact_path in results["artifacts"]:
-                        # Upload to storage
-                        artifact_key = f"runs/{run_id}/artifacts/{os.path.basename(artifact_path)}"
-                        storage.upload_file(artifact_path, artifact_key)
-                        
-                        # Create artifact record
-                        artifact = Artifact(
-                            run_id=run_id,
-                            document_id=doc.id,
-                            artifact_type="extraction_output",
-                            storage_key=artifact_key,
-                            metadata={"source_document": doc.filename}
-                        )
-                        db.add(artifact)
-                        db.commit()
-                        stats["artifacts_created"] += 1
-                        emitter.emit_artifact_created(run_id, artifact.id, doc.id)
+                # Note: The pipeline doesn't produce artifacts in this mode
+                # Artifacts are only created when explicitly exporting
                 
                 # Update stats
                 doc_time = time.time() - doc_start
@@ -179,8 +176,8 @@ def process_run(run_id: int, provider: str = "openrouter", model: str = None) ->
                 
                 # EMIT document completed event
                 emitter.emit_document_completed(run_id, doc.id, {
-                    "pages": results.get("pages", 0),
-                    "ocr_detected": results.get("ocr_detected", False),
+                    "pages": 0,  # Not tracked by pipeline
+                    "ocr_detected": False,  # Not tracked by pipeline
                     "processing_time_seconds": doc_time,
                     "events_created": events_created
                 })
@@ -283,17 +280,29 @@ def process_document(document_id: int, provider: str = "openrouter", model: str 
         
         # Initialize pipeline
         pipeline = LegalEventsPipeline(
-            provider=provider,
-            model_override=model,
-            store_artifacts=True
+            event_extractor=provider,
+            runtime_model=model,
+            doc_extractor=None  # Use default
         )
         
         # Process document
-        results = pipeline.process_documents(
-            file_paths=[tmp_path],
-            output_dir=tempfile.mkdtemp(),
-            case_name=f"doc_{document_id}"
-        )
+        # Create a file-like object for the pipeline
+        class FileWrapper:
+            def __init__(self, path, name):
+                with open(path, 'rb') as f:
+                    self.content = f.read()
+                self.name = name
+            def read(self):
+                return self.content
+        
+        file_obj = FileWrapper(tmp_path, doc.filename)
+        df, warning = pipeline.process_documents_for_legal_events([file_obj])
+        
+        # Convert DataFrame to event records
+        if not df.empty:
+            results = {"events": df.to_dict('records')}
+        else:
+            results = {"events": []}
         
         # WRITE events
         events_created = 0
@@ -302,11 +311,12 @@ def process_document(document_id: int, provider: str = "openrouter", model: str 
                 event = Event(
                     run_id=doc.run_id,
                     document_id=document_id,
-                    event_type=event_data.get("event_type", "Unknown"),
-                    event_date=event_data.get("date"),
-                    description=event_data.get("description"),
-                    parties=json.dumps(event_data.get("parties", [])),
-                    metadata=event_data
+                    number=event_data.get("number", events_created + 1),
+                    date=event_data.get("date", "Date not available"),
+                    event_particulars=event_data.get("event_particulars", ""),
+                    citation=event_data.get("citation", ""),
+                    document_reference=event_data.get("document_reference", doc.filename),
+                    confidence_score=event_data.get("confidence_score")
                 )
                 db.add(event)
                 db.commit()
@@ -388,13 +398,13 @@ def export_run_events(run_id: int, format: str = "csv") -> Dict[str, Any]:
         for event in events:
             doc = db.query(Document).filter(Document.id == event.document_id).first()
             export_data.append({
-                "Event ID": event.id,
-                "Document": doc.filename if doc else "Unknown",
-                "Event Type": event.event_type,
-                "Date": event.event_date,
-                "Description": event.description,
-                "Parties": event.parties,
-                "Extracted At": event.created_at
+                "No": event.number,
+                "Date": event.date,
+                "Event Particulars": event.event_particulars,
+                "Citation": event.citation,
+                "Document Reference": event.document_reference,
+                "Confidence Score": event.confidence_score,
+                "Extracted At": event.created_at.isoformat() if event.created_at else None
             })
         
         # Create DataFrame
@@ -450,13 +460,10 @@ def export_run_events(run_id: int, format: str = "csv") -> Dict[str, Any]:
         # WRITE artifact record (worker output)
         artifact = Artifact(
             run_id=run_id,
-            artifact_type=f"export_{format}",
+            kind=f"export_{format}",  # Correct field name
             storage_key=artifact_key,
-            metadata={
-                "format": format,
-                "events_count": len(events),
-                "exported_at": datetime.utcnow().isoformat()
-            }
+            size_bytes=os.path.getsize(tmp_path) if os.path.exists(tmp_path) else 0,
+            expires_at=datetime.utcnow() + timedelta(days=7)  # Optional: add expiration
         )
         db.add(artifact)
         db.commit()
