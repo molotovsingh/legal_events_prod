@@ -114,14 +114,23 @@ class RunCreate(BaseModel):
     case_id: int
     provider: Optional[str] = "openrouter"
     model: Optional[str] = "meta-llama/llama-3.3-70b-instruct"
-    file_count: Optional[int] = Field(1, ge=1, le=100)  # For generating upload URLs
+    file_count: Optional[int] = Field(1, ge=1, le=100)  # For backward compatibility (deprecated)
+    filenames: Optional[List[str]] = None  # New: actual filenames for presigned URLs
+
+
+class PresignedUploadURL(BaseModel):
+    """Presigned upload URL with matched filename and storage key"""
+    filename: str
+    storage_key: str
+    upload_url: str
 
 
 class RunCreateResponse(BaseModel):
     run_id: int
     case_id: int
     status: str
-    upload_urls: List[str]
+    upload_urls: List[str]  # Deprecated: for backward compatibility
+    presigned_uploads: Optional[List[PresignedUploadURL]] = None  # New: matched URLs with keys
 
 
 class FileManifestItem(BaseModel):

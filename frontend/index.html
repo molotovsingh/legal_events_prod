@@ -327,32 +327,40 @@
             uploadResult.innerHTML = '<div class="spinner"></div> Processing...';
 
             try {
-                // Create run
+                // Step 1: Create run with actual filenames (new two-step flow)
+                const filenames = Array.from(files).map(f => f.name);
                 const runResponse = await axios.post(`${API_URL}/v1/runs`, {
                     case_id: parseInt(caseId),
                     provider: provider,
-                    file_count: files.length
+                    filenames: filenames  // Send actual filenames
                 });
-                
-                const runId = runResponse.data.run_id;
-                const uploadUrls = runResponse.data.upload_urls;
 
-                // Validate that we have the correct number of presigned URLs
-                if (!uploadUrls || uploadUrls.length !== files.length) {
+                const runId = runResponse.data.run_id;
+                const presignedUploads = runResponse.data.presigned_uploads;
+
+                // Validate response format
+                if (!presignedUploads || presignedUploads.length !== files.length) {
                     throw new Error(
-                        `URL count mismatch: expected ${files.length} URLs, got ${uploadUrls ? uploadUrls.length : 0}. ` +
+                        `Presigned upload count mismatch: expected ${files.length}, got ${presignedUploads ? presignedUploads.length : 0}. ` +
                         `Please verify files and try again.`
                     );
                 }
 
-                // Upload files
+                // Step 2: Upload files using matched presigned URLs
                 const manifest = [];
                 for (let i = 0; i < files.length; i++) {
                     const file = files[i];
-                    const url = uploadUrls[i];
+                    const presigned = presignedUploads[i];
+
+                    // Verify filename match (safety check)
+                    if (presigned.filename !== file.name) {
+                        throw new Error(
+                            `Filename mismatch at index ${i}: expected "${file.name}", got "${presigned.filename}"`
+                        );
+                    }
 
                     // Upload file to presigned URL
-                    await axios.put(url, file, {
+                    await axios.put(presigned.upload_url, file, {
                         headers: {
                             'Content-Type': file.type || 'application/octet-stream'
                         }
@@ -361,11 +369,12 @@
                     // Calculate real SHA-256 hash using Web Crypto API
                     const sha256 = await calculateFileSHA256(file);
 
+                    // Use the storage_key from the API response (guaranteed to match)
                     manifest.push({
                         filename: file.name,
                         size_bytes: file.size,
                         sha256: sha256,
-                        storage_key: `clients/${clientId}/cases/${caseId}/runs/${runId}/docs/${file.name}`,
+                        storage_key: presigned.storage_key,  // Use matched key from API
                         mime_type: file.type
                     });
                 }

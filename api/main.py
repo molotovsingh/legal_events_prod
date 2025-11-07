@@ -3,7 +3,7 @@ FastAPI Application for Legal Events Extraction v2
 Main application entry point with all API routes
 """
 
-from fastapi import FastAPI, Depends, HTTPException, File, UploadFile, BackgroundTasks
+from fastapi import FastAPI, Depends, HTTPException, File, UploadFile, BackgroundTasks, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy.orm import Session
@@ -304,7 +304,16 @@ async def create_run(
     current_user: User = Depends(require_auth)  # Enforce authentication
 ):
     """
-    Create a new run and get presigned upload URLs
+    Create a new run and get presigned upload URLs.
+
+    Two-step presign flow (recommended):
+    - Send filenames array → Get back matched {filename, storage_key, upload_url}[]
+    - Upload each file to its corresponding upload_url
+    - Send manifest with matched storage_keys to /v1/runs/{run_id}/start
+
+    Legacy flow (deprecated):
+    - Send file_count → Get back generic upload_urls[]
+    - This may cause storage key mismatch issues
     """
     # Get case to retrieve client_id for multi-tenancy
     case = db.query(Case).filter(Case.id == run.case_id).first()
@@ -324,28 +333,56 @@ async def create_run(
 
     # Generate presigned upload URLs
     storage = MinioStorage()
-    upload_urls = []
 
-    # For now, return a batch of URLs (client will specify how many needed)
-    # In production, this would be based on the actual files to upload
-    for i in range(run.file_count or 1):
-        url = storage.generate_upload_url(
-            client_id=case.client_id,
-            case_id=run.case_id,
-            run_id=db_run.id,
-            filename=f"document_{i}.pdf"  # Placeholder
-        )
-        upload_urls.append(url)
+    # NEW: Two-step presign flow with actual filenames
+    if run.filenames:
+        presigned_uploads = []
+        for filename in run.filenames:
+            storage_key = f"clients/{case.client_id}/cases/{run.case_id}/runs/{db_run.id}/docs/{filename}"
+            upload_url = storage.generate_upload_url(
+                client_id=case.client_id,
+                case_id=run.case_id,
+                run_id=db_run.id,
+                filename=filename
+            )
+            presigned_uploads.append({
+                "filename": filename,
+                "storage_key": storage_key,
+                "upload_url": upload_url
+            })
 
-    # current_user is now guaranteed by require_auth dependency
-    logger.info(f"Created run {db_run.id} for client {case.client_id} with {len(upload_urls)} upload URLs by {current_user.email}")
+        logger.info(f"Created run {db_run.id} for client {case.client_id} with {len(presigned_uploads)} matched presigned URLs by {current_user.email}")
 
-    return {
-        "run_id": db_run.id,
-        "case_id": run.case_id,
-        "status": db_run.status.value,
-        "upload_urls": upload_urls
-    }
+        return {
+            "run_id": db_run.id,
+            "case_id": run.case_id,
+            "status": db_run.status.value,
+            "upload_urls": [p["upload_url"] for p in presigned_uploads],  # Backward compat
+            "presigned_uploads": presigned_uploads  # New format with matched keys
+        }
+
+    # LEGACY: Placeholder filenames (deprecated, may cause storage key mismatch)
+    else:
+        upload_urls = []
+        for i in range(run.file_count or 1):
+            url = storage.generate_upload_url(
+                client_id=case.client_id,
+                case_id=run.case_id,
+                run_id=db_run.id,
+                filename=f"document_{i}.pdf"  # Placeholder
+            )
+            upload_urls.append(url)
+
+        logger.warning(f"Created run {db_run.id} using LEGACY placeholder filenames - consider using 'filenames' parameter")
+        logger.info(f"Created run {db_run.id} for client {case.client_id} with {len(upload_urls)} upload URLs by {current_user.email}")
+
+        return {
+            "run_id": db_run.id,
+            "case_id": run.case_id,
+            "status": db_run.status.value,
+            "upload_urls": upload_urls,
+            "presigned_uploads": None
+        }
 
 
 @app.put("/v1/runs/{run_id}/start")
@@ -549,8 +586,8 @@ async def retry_run(
     run_id: int,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-    idempotency_key: Optional[str] = None
+    current_user: User = Depends(require_auth),
+    idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key")
 ):
     """
     Retry a failed or stuck run.
