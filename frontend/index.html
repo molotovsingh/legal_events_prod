@@ -26,6 +26,37 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
+        /* Text truncation for long content */
+        .truncate-cell {
+            max-width: 300px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            cursor: pointer;
+            position: relative;
+        }
+        .truncate-cell:hover {
+            background-color: #f3f4f6;
+        }
+        /* Tooltip for full text */
+        .truncate-cell[data-full-text]:hover::after {
+            content: attr(data-full-text);
+            position: absolute;
+            left: 0;
+            top: 100%;
+            z-index: 50;
+            max-width: 500px;
+            padding: 8px 12px;
+            background-color: #1f2937;
+            color: white;
+            border-radius: 4px;
+            font-size: 0.875rem;
+            line-height: 1.4;
+            white-space: normal;
+            word-wrap: break-word;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            margin-top: 4px;
+        }
     </style>
 </head>
 <body class="bg-gray-100 min-h-screen">
@@ -531,17 +562,29 @@
                     cell2.className = 'px-4 py-2 border-b';
                     cell2.textContent = event.date || 'N/A';
 
+                    // Event particulars - truncate with tooltip
                     const cell3 = row.insertCell();
-                    cell3.className = 'px-4 py-2 border-b text-sm';
+                    cell3.className = 'px-4 py-2 border-b text-sm truncate-cell';
                     cell3.textContent = event.event_particulars;
+                    cell3.setAttribute('data-full-text', event.event_particulars);
+                    cell3.title = 'Hover to see full text';
 
+                    // Citation - truncate with tooltip
                     const cell4 = row.insertCell();
-                    cell4.className = 'px-4 py-2 border-b text-sm';
-                    cell4.textContent = event.citation || '';
+                    cell4.className = 'px-4 py-2 border-b text-sm truncate-cell';
+                    const citationText = event.citation || '';
+                    cell4.textContent = citationText;
+                    if (citationText) {
+                        cell4.setAttribute('data-full-text', citationText);
+                        cell4.title = 'Hover to see full text';
+                    }
 
+                    // Document reference - truncate with tooltip
                     const cell5 = row.insertCell();
-                    cell5.className = 'px-4 py-2 border-b text-sm';
+                    cell5.className = 'px-4 py-2 border-b text-sm truncate-cell';
                     cell5.textContent = event.document_reference;
+                    cell5.setAttribute('data-full-text', event.document_reference);
+                    cell5.title = 'Hover to see full text';
                 });
 
                 document.getElementById('eventsSection').classList.remove('hidden');
