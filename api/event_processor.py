@@ -3,10 +3,17 @@ API Event Processor - Consumes Worker Events and Updates State
 
 This module handles worker events and updates API-owned entities.
 Maintains service boundaries by having API own all state transitions.
+
+Features:
+- Exponential backoff retry mechanism
+- Dead Letter Queue (DLQ) for permanently failed events
+- Configurable retry attempts (default: 3)
 """
 
 import logging
 import threading
+import time
+import json
 from datetime import datetime
 from typing import Optional
 import redis
@@ -17,6 +24,11 @@ from infra.models import Run, RunStatus, Document, DocumentStatus
 from infra.worker_events import WorkerEventConsumer, WorkerEvent, WorkerEventType
 
 logger = logging.getLogger(__name__)
+
+# Retry configuration
+MAX_RETRY_ATTEMPTS = 3  # Maximum number of retry attempts
+RETRY_BASE_DELAY = 1.0  # Base delay in seconds (exponential backoff: 1s, 2s, 4s)
+DLQ_KEY = "worker:events:dlq"  # Redis key for Dead Letter Queue
 
 
 class APIEventProcessor:
@@ -60,43 +72,74 @@ class APIEventProcessor:
             
     def _process_event(self, event: WorkerEvent):
         """
-        Process a single worker event.
+        Process a single worker event with retry mechanism.
         Updates API-owned entities based on event type.
+
+        Retry Strategy:
+        - Attempt 1: Immediate
+        - Attempt 2: After 1s delay
+        - Attempt 3: After 2s delay (cumulative: 3s)
+        - Attempt 4: After 4s delay (cumulative: 7s)
+        - If all fail: Move to DLQ
         """
-        db: Optional[Session] = None
-        try:
-            db = SessionLocal()
-            
-            if event.event_type == WorkerEventType.RUN_STARTED:
-                self._handle_run_started(db, event)
-                
-            elif event.event_type == WorkerEventType.RUN_COMPLETED:
-                self._handle_run_completed(db, event)
-                
-            elif event.event_type == WorkerEventType.RUN_FAILED:
-                self._handle_run_failed(db, event)
-                
-            elif event.event_type == WorkerEventType.DOCUMENT_STARTED:
-                self._handle_document_started(db, event)
-                
-            elif event.event_type == WorkerEventType.DOCUMENT_COMPLETED:
-                self._handle_document_completed(db, event)
-                
-            elif event.event_type == WorkerEventType.DOCUMENT_FAILED:
-                self._handle_document_failed(db, event)
-                
-            elif event.event_type in [WorkerEventType.EVENT_CREATED, WorkerEventType.ARTIFACT_CREATED]:
-                # These are informational only - worker has already created the entities
-                logger.debug(f"Worker created entity: {event.event_type.value}")
-                
-            else:
-                logger.debug(f"Unhandled event type: {event.event_type.value}")
-                
-        except Exception as e:
-            logger.error(f"Failed to process event {event.event_type.value}: {e}")
-        finally:
-            if db:
-                db.close()
+        retry_count = 0
+        last_error = None
+
+        while retry_count < MAX_RETRY_ATTEMPTS:
+            db: Optional[Session] = None
+            try:
+                db = SessionLocal()
+
+                if event.event_type == WorkerEventType.RUN_STARTED:
+                    self._handle_run_started(db, event)
+
+                elif event.event_type == WorkerEventType.RUN_COMPLETED:
+                    self._handle_run_completed(db, event)
+
+                elif event.event_type == WorkerEventType.RUN_FAILED:
+                    self._handle_run_failed(db, event)
+
+                elif event.event_type == WorkerEventType.DOCUMENT_STARTED:
+                    self._handle_document_started(db, event)
+
+                elif event.event_type == WorkerEventType.DOCUMENT_COMPLETED:
+                    self._handle_document_completed(db, event)
+
+                elif event.event_type == WorkerEventType.DOCUMENT_FAILED:
+                    self._handle_document_failed(db, event)
+
+                elif event.event_type in [WorkerEventType.EVENT_CREATED, WorkerEventType.ARTIFACT_CREATED]:
+                    # These are informational only - worker has already created the entities
+                    logger.debug(f"Worker created entity: {event.event_type.value}")
+
+                else:
+                    logger.debug(f"Unhandled event type: {event.event_type.value}")
+
+                # Success - break retry loop
+                if retry_count > 0:
+                    logger.info(f"Event {event.event_type.value} succeeded after {retry_count} retries")
+                return
+
+            except Exception as e:
+                retry_count += 1
+                last_error = e
+                logger.warning(
+                    f"Failed to process event {event.event_type.value} "
+                    f"(attempt {retry_count}/{MAX_RETRY_ATTEMPTS}): {e}"
+                )
+
+                if retry_count < MAX_RETRY_ATTEMPTS:
+                    # Exponential backoff: 1s, 2s, 4s
+                    delay = RETRY_BASE_DELAY * (2 ** (retry_count - 1))
+                    logger.debug(f"Retrying after {delay}s delay...")
+                    time.sleep(delay)
+
+            finally:
+                if db:
+                    db.close()
+
+        # All retries exhausted - move to DLQ
+        self._move_to_dlq(event, last_error)
                 
     def _handle_run_started(self, db: Session, event: WorkerEvent):
         """Handle run started event"""
@@ -192,9 +235,58 @@ class APIEventProcessor:
             doc.status = DocumentStatus.FAILED
             doc.error = event.error
             doc.processed_at = event.timestamp
-            
+
             db.commit()
             logger.debug(f"Updated document {event.document_id} to FAILED: {event.error}")
+
+    def _move_to_dlq(self, event: WorkerEvent, error: Exception):
+        """
+        Move failed event to Dead Letter Queue (DLQ) after exhausting retries
+
+        Args:
+            event: The failed event
+            error: The last exception encountered
+
+        DLQ Format:
+            Redis List: worker:events:dlq
+            Each entry is a JSON object with:
+            - event: Serialized event data
+            - error: Error message
+            - failed_at: Timestamp
+            - retry_attempts: Number of retry attempts made
+        """
+        try:
+            dlq_entry = {
+                "event": {
+                    "event_type": event.event_type.value,
+                    "run_id": event.run_id,
+                    "document_id": event.document_id,
+                    "timestamp": event.timestamp.isoformat() if event.timestamp else None,
+                    "payload": event.payload,
+                    "error": event.error
+                },
+                "processing_error": str(error),
+                "failed_at": datetime.utcnow().isoformat(),
+                "retry_attempts": MAX_RETRY_ATTEMPTS
+            }
+
+            # Push to DLQ (Redis list)
+            self.redis_conn.lpush(DLQ_KEY, json.dumps(dlq_entry))
+
+            # Trim DLQ to last 1000 entries to prevent unbounded growth
+            self.redis_conn.ltrim(DLQ_KEY, 0, 999)
+
+            logger.error(
+                f"Event {event.event_type.value} moved to DLQ after {MAX_RETRY_ATTEMPTS} failed attempts. "
+                f"Error: {error}. Check DLQ for manual recovery."
+            )
+
+        except Exception as dlq_error:
+            # Last resort: Log to stderr if DLQ push fails
+            logger.critical(
+                f"CRITICAL: Failed to move event to DLQ! Event: {event.event_type.value}, "
+                f"Original Error: {error}, DLQ Error: {dlq_error}"
+            )
 
 
 # Global processor instance
