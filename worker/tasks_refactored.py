@@ -83,22 +83,28 @@ def process_run(run_id: int, provider: str = "openrouter", model: str = None) ->
         
         # READ documents to process (read-only) - includes failed docs for retry
         # Query PENDING and FAILED documents (allows automatic retry)
+        # Load retry configuration for stuck document threshold
+        from core.config import RetryConfig
+        retry_config = RetryConfig()
+        stuck_threshold_hours = retry_config.stuck_document_hours
+        
+        # Query documents to process: PENDING and FAILED (aligned with API retry logic)
         documents = db.query(Document).filter(
             Document.run_id == run_id,
             Document.status.in_([DocumentStatus.PENDING, DocumentStatus.FAILED])
         ).all()
         
-        # If no pending/failed, check for stuck PROCESSING documents (>1 hour old)
+        # If no pending/failed, check for stuck PROCESSING documents (configurable threshold)
         if not documents:
-            logger.info(f"No pending/failed documents for run {run_id}, checking for stuck documents...")
+            logger.info(f"No pending/failed documents for run {run_id}, checking for stuck documents (>{stuck_threshold_hours}h)...")
             stuck_documents = db.query(Document).filter(
                 Document.run_id == run_id,
                 Document.status == DocumentStatus.PROCESSING,
-                Document.created_at < datetime.utcnow() - timedelta(hours=1)
+                Document.created_at < datetime.utcnow() - timedelta(hours=stuck_threshold_hours)
             ).all()
             
             if stuck_documents:
-                logger.warning(f"Found {len(stuck_documents)} stuck PROCESSING documents for run {run_id}")
+                logger.warning(f"Found {len(stuck_documents)} stuck PROCESSING documents (>{stuck_threshold_hours}h) for run {run_id}")
                 documents = stuck_documents
         
         if not documents:

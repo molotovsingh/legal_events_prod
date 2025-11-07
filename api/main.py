@@ -549,92 +549,134 @@ async def retry_run(
     run_id: int,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    idempotency_key: Optional[str] = None
 ):
     """
     Retry a failed or stuck run.
     
     This endpoint:
     1. Resets FAILED documents to PENDING
-    2. Resets stuck PROCESSING documents (>1 hour old) to PENDING
+    2. Resets stuck PROCESSING documents (configurable threshold) to PENDING
     3. Resets run status to QUEUED
     4. Enqueues new processing job
+    
+    Supports idempotency via Idempotency-Key header to prevent duplicate retries.
     
     Returns:
         JSON with retry status and number of documents reset
     """
     from datetime import timedelta
+    from core.config import RetryConfig
+    import redis
     
-    # Enforce authentication - critical security fix
-    if not current_user:
-        raise HTTPException(
-            status_code=401,
-            detail="Authentication required",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+    # Load retry configuration
+    retry_config = RetryConfig()
+    stuck_threshold_hours = retry_config.stuck_document_hours
+    stuck_threshold_seconds = stuck_threshold_hours * 3600
+    
+    # Check idempotency cache
+    if idempotency_key:
+        try:
+            r = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379"))
+            cache_key = f"idempotency:retry_run:{idempotency_key}"
+            cached_response = r.get(cache_key)
+            if cached_response:
+                logger.info(f"Returning cached retry response for idempotency key: {idempotency_key}")
+                return json.loads(cached_response)
+            r.close()
+        except Exception as e:
+            logger.warning(f"Failed to check idempotency cache: {e}")
     
     # Get run
     run = db.query(Run).filter(Run.id == run_id).first()
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
     
+    # Validate run has documents
+    total_docs = db.query(Document).filter(Document.run_id == run_id).count()
+    if total_docs == 0:
+        raise HTTPException(status_code=400, detail="Cannot retry run with no documents")
+    
     # Only allow retry for failed/partial/stuck runs
     if run.status not in [RunStatus.FAILED, RunStatus.PARTIAL_SUCCESS]:
-        # Check if run is stuck (PROCESSING > 1 hour)
+        # Check if run is stuck (PROCESSING > configured threshold)
         if run.status == RunStatus.PROCESSING:
-            if not run.started_at or (datetime.utcnow() - run.started_at).total_seconds() < 3600:
+            if not run.started_at or (datetime.utcnow() - run.started_at).total_seconds() < stuck_threshold_seconds:
                 raise HTTPException(status_code=400, detail="Run is still processing")
         else:
             raise HTTPException(status_code=400, detail=f"Cannot retry run in {run.status.value} state")
     
-    # Reset FAILED documents to PENDING
-    failed_docs = db.query(Document).filter(
-        Document.run_id == run_id,
-        Document.status == DocumentStatus.FAILED
-    ).all()
-    
-    for doc in failed_docs:
-        doc.status = DocumentStatus.PENDING
-        doc.error = None
-        doc.processed_at = None
-    
-    # Reset stuck PROCESSING documents (>1 hour old)
-    stuck_docs = db.query(Document).filter(
-        Document.run_id == run_id,
-        Document.status == DocumentStatus.PROCESSING,
-        Document.created_at < datetime.utcnow() - timedelta(hours=1)
-    ).all()
-    
-    for doc in stuck_docs:
-        doc.status = DocumentStatus.PENDING
-        doc.processed_at = None
-    
-    # Reset run status
-    run.status = RunStatus.QUEUED
-    run.error = None
-    run.finished_at = None
-    
-    db.commit()
-    
-    # Enqueue new processing job
-    job_id = enqueue_job(
-        "process_run",
-        run_id=run_id,
-        provider=run.provider,
-        model=run.model
-    )
-    
-    username = current_user.email if current_user else "anonymous"
-    logger.info(f"Retrying run {run_id}, reset {len(failed_docs)} failed + {len(stuck_docs)} stuck docs by {username}")
-    
-    return {
-        "status": "accepted",
-        "run_id": run_id,
-        "job_id": job_id,
-        "documents_reset": len(failed_docs) + len(stuck_docs),
-        "failed_documents": len(failed_docs),
-        "stuck_documents": len(stuck_docs)
-    }
+    # Start database transaction for atomic updates
+    try:
+        # Reset FAILED documents to PENDING
+        failed_docs = db.query(Document).filter(
+            Document.run_id == run_id,
+            Document.status == DocumentStatus.FAILED
+        ).all()
+        
+        for doc in failed_docs:
+            doc.status = DocumentStatus.PENDING
+            doc.error = None
+            doc.processed_at = None
+        
+        # Reset stuck PROCESSING documents (>configured threshold)
+        stuck_docs = db.query(Document).filter(
+            Document.run_id == run_id,
+            Document.status == DocumentStatus.PROCESSING,
+            Document.created_at < datetime.utcnow() - timedelta(hours=stuck_threshold_hours)
+        ).all()
+        
+        for doc in stuck_docs:
+            doc.status = DocumentStatus.PENDING
+            doc.processed_at = None
+        
+        # Reset run status
+        run.status = RunStatus.QUEUED
+        run.error = None
+        run.finished_at = None
+        
+        # Flush changes before enqueueing (ensures DB consistency)
+        db.flush()
+        
+        # Enqueue new processing job
+        job_id = enqueue_job(
+            "process_run",
+            run_id=run_id,
+            provider=run.provider,
+            model=run.model
+        )
+        
+        # Commit transaction after successful job enqueue
+        db.commit()
+        
+        logger.info(f"Retrying run {run_id}, reset {len(failed_docs)} failed + {len(stuck_docs)} stuck docs by {current_user.email}")
+        
+        response = {
+            "status": "accepted",
+            "run_id": run_id,
+            "job_id": job_id,
+            "documents_reset": len(failed_docs) + len(stuck_docs),
+            "failed_documents": len(failed_docs),
+            "stuck_documents": len(stuck_docs)
+        }
+        
+        # Cache the result for idempotency (24-hour TTL)
+        if idempotency_key:
+            try:
+                r = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379"))
+                cache_key = f"idempotency:retry_run:{idempotency_key}"
+                r.setex(cache_key, 86400, json.dumps(response))
+                r.close()
+            except Exception as e:
+                logger.warning(f"Failed to cache idempotency result: {e}")
+        
+        return response
+        
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Failed to retry run {run_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to retry run: {str(e)}")
 
 
 @app.get("/v1/runs/{run_id}/export")

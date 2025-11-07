@@ -195,6 +195,24 @@ class GeminiEventConfig:
 
 
 @dataclass
+class RetryConfig:
+    """Configuration for document retry mechanism
+    
+    Controls automatic and manual retry behavior for failed and stuck documents.
+    
+    Default stuck threshold: 1 hour
+    Configurable via STUCK_DOCUMENT_HOURS environment variable
+    """
+    
+    # Stuck document detection threshold (in hours)
+    stuck_document_hours: int = field(default_factory=lambda: env_int("STUCK_DOCUMENT_HOURS", 1))
+    
+    # Future enhancements: max retry count, exponential backoff, etc.
+    # max_retry_count: int = field(default_factory=lambda: env_int("MAX_RETRY_COUNT", 3))
+    # retry_backoff_seconds: int = field(default_factory=lambda: env_int("RETRY_BACKOFF_SECONDS", 60))
+
+
+@dataclass
 class ExtractorConfig:
     """Configuration for extractor selection
 

@@ -391,5 +391,228 @@ class TestEndToEndRetryScenarios:
         assert test_data["doc_stuck"].status == DocumentStatus.PENDING
 
 
+class TestRetryBugFixes:
+    """Test fixes for bugs identified in recent commits"""
+    
+    def test_idempotency_key_protection(self, test_client, db_session, test_data, auth_headers):
+        """Test that idempotency key prevents duplicate retry requests"""
+        idempotency_key = "unique-retry-key-123"
+        headers = {**auth_headers, "Idempotency-Key": idempotency_key}
+        
+        # First request
+        with patch('api.main.enqueue_job', return_value="job_1") as mock_enqueue:
+            response1 = test_client.put(
+                f"/v1/runs/{test_data['run'].id}/retry",
+                headers=headers
+            )
+        
+        assert response1.status_code == 200
+        job_id_1 = response1.json()["job_id"]
+        mock_enqueue.assert_called_once()
+        
+        # Second request with same idempotency key (should return cached response)
+        with patch('api.main.enqueue_job', return_value="job_2") as mock_enqueue_2:
+            response2 = test_client.put(
+                f"/v1/runs/{test_data['run'].id}/retry",
+                headers=headers
+            )
+        
+        assert response2.status_code == 200
+        job_id_2 = response2.json()["job_id"]
+        
+        # Should return same job_id from cache, enqueue should NOT be called
+        assert job_id_1 == job_id_2
+        mock_enqueue_2.assert_not_called()
+    
+    def test_transaction_rollback_on_enqueue_failure(self, test_client, db_session, test_data, auth_headers):
+        """Test that database changes are rolled back if job enqueue fails"""
+        original_status = test_data["run"].status
+        failed_doc_original_status = test_data["doc_failed"].status
+        
+        # Mock enqueue_job to raise an exception
+        with patch('api.main.enqueue_job', side_effect=Exception("Queue is down")):
+            response = test_client.put(
+                f"/v1/runs/{test_data['run'].id}/retry",
+                headers=auth_headers
+            )
+        
+        assert response.status_code == 500
+        
+        # Verify database changes were rolled back
+        db_session.refresh(test_data["run"])
+        db_session.refresh(test_data["doc_failed"])
+        
+        assert test_data["run"].status == original_status
+        assert test_data["doc_failed"].status == failed_doc_original_status
+    
+    def test_no_redundant_authentication_check(self, test_client, db_session, test_data):
+        """Test that missing auth returns 401 via dependency (not redundant check)"""
+        # Request without auth header
+        response = test_client.put(f"/v1/runs/{test_data['run'].id}/retry")
+        
+        # Should get 401 from get_current_user dependency, not custom check
+        assert response.status_code == 401
+        assert "Authentication required" in response.json()["detail"] or "Not authenticated" in response.json()["detail"]
+    
+    def test_configurable_stuck_threshold(self, test_client, db_session, test_data, auth_headers):
+        """Test that stuck document threshold is configurable via environment variable"""
+        # Set custom threshold (2 hours)
+        with patch.dict(os.environ, {"STUCK_DOCUMENT_HOURS": "2"}):
+            # Create a document stuck for 1.5 hours (should NOT be retried with 2h threshold)
+            stuck_doc_1_5h = Document(
+                run_id=test_data["run"].id,
+                filename="stuck_1.5h.pdf",
+                file_path="stuck_1.5h.pdf",
+                status=DocumentStatus.PROCESSING,
+                created_at=datetime.utcnow() - timedelta(hours=1.5)
+            )
+            db_session.add(stuck_doc_1_5h)
+            db_session.commit()
+            
+            with patch('api.main.enqueue_job', return_value="test_job"):
+                response = test_client.put(
+                    f"/v1/runs/{test_data['run'].id}/retry",
+                    headers=auth_headers
+                )
+            
+            assert response.status_code == 200
+            result = response.json()
+            
+            # Verify 1.5h stuck doc was NOT reset (threshold is 2h)
+            db_session.refresh(stuck_doc_1_5h)
+            assert stuck_doc_1_5h.status == DocumentStatus.PROCESSING
+    
+    def test_redis_connection_properly_closed(self, test_client, db_session, test_data, auth_headers):
+        """Test that Redis connections are properly closed after use"""
+        idempotency_key = "test-redis-connection"
+        headers = {**auth_headers, "Idempotency-Key": idempotency_key}
+        
+        mock_redis = MagicMock()
+        mock_redis.get.return_value = None
+        
+        with patch('redis.from_url', return_value=mock_redis):
+            with patch('api.main.enqueue_job', return_value="job_id"):
+                response = test_client.put(
+                    f"/v1/runs/{test_data['run'].id}/retry",
+                    headers=headers
+                )
+        
+        assert response.status_code == 200
+        
+        # Verify Redis connection was closed (called twice: check + cache)
+        assert mock_redis.close.call_count == 2
+    
+    def test_validation_no_documents(self, test_client, db_session, auth_headers):
+        """Test that retry fails if run has no documents"""
+        # Create client and case
+        client = Client(
+            name="Empty Client",
+            reference_code="EMPTY001",
+            status=ClientStatus.ACTIVE
+        )
+        db_session.add(client)
+        db_session.flush()
+        
+        case = Case(
+            client_id=client.id,
+            case_name="Empty Case",
+            status=CaseStatus.ACTIVE
+        )
+        db_session.add(case)
+        db_session.flush()
+        
+        # Create run with no documents
+        run = Run(
+            case_id=case.id,
+            status=RunStatus.FAILED,
+            provider="openrouter",
+            model="test-model"
+        )
+        db_session.add(run)
+        db_session.commit()
+        
+        # Attempt retry
+        response = test_client.put(f"/v1/runs/{run.id}/retry", headers=auth_headers)
+        
+        assert response.status_code == 400
+        assert "no documents" in response.json()["detail"].lower()
+    
+    def test_logging_uses_authenticated_user(self, test_client, db_session, test_data, auth_headers, caplog):
+        """Test that logging uses authenticated user email (no anonymous fallback)"""
+        import logging
+        caplog.set_level(logging.INFO)
+        
+        with patch('api.main.enqueue_job', return_value="test_job"):
+            response = test_client.put(
+                f"/v1/runs/{test_data['run'].id}/retry",
+                headers=auth_headers
+            )
+        
+        assert response.status_code == 200
+        
+        # Check that log contains user email, not "anonymous"
+        log_messages = [record.message for record in caplog.records]
+        retry_logs = [msg for msg in log_messages if "Retrying run" in msg]
+        
+        assert len(retry_logs) > 0
+        assert "test@example.com" in retry_logs[0]
+        assert "anonymous" not in retry_logs[0]
+    
+    def test_worker_uses_configurable_threshold(self, db_session, test_data):
+        """Test that worker uses configurable stuck document threshold"""
+        with patch.dict(os.environ, {"STUCK_DOCUMENT_HOURS": "3"}):
+            # Create document stuck for 2 hours
+            stuck_doc_2h = Document(
+                run_id=test_data["run"].id,
+                filename="stuck_2h.pdf",
+                file_path="stuck_2h.pdf",
+                status=DocumentStatus.PROCESSING,
+                created_at=datetime.utcnow() - timedelta(hours=2)
+            )
+            db_session.add(stuck_doc_2h)
+            db_session.commit()
+            
+            # Mock storage and pipeline
+            with patch('worker.tasks_refactored.MinioStorage') as mock_storage:
+                with patch('worker.tasks_refactored.LegalEventsPipeline') as mock_pipeline:
+                    mock_storage.return_value.download_file.return_value = tempfile.NamedTemporaryFile(suffix=".pdf")
+                    mock_pipeline.return_value.process_file.return_value = ([], {})
+                    
+                    # Worker should NOT process 2h stuck doc (threshold is 3h)
+                    result = process_run(test_data["run"].id, provider="langextract")
+                    
+                    # Verify 2h stuck doc was NOT processed
+                    db_session.refresh(stuck_doc_2h)
+                    assert stuck_doc_2h.status == DocumentStatus.PROCESSING
+    
+    def test_concurrent_retry_requests(self, test_client, db_session, test_data, auth_headers):
+        """Test behavior with concurrent retry requests (race condition protection)"""
+        import threading
+        
+        results = []
+        
+        def make_retry_request():
+            with patch('api.main.enqueue_job', return_value="job_id"):
+                response = test_client.put(
+                    f"/v1/runs/{test_data['run'].id}/retry",
+                    headers=auth_headers
+                )
+                results.append(response.status_code)
+        
+        # Launch 5 concurrent requests
+        threads = [threading.Thread(target=make_retry_request) for _ in range(5)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        
+        # All requests should succeed (transaction protection)
+        assert all(status == 200 for status in results)
+        
+        # Run should be in QUEUED state
+        db_session.refresh(test_data["run"])
+        assert test_data["run"].status == RunStatus.QUEUED
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
