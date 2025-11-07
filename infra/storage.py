@@ -8,9 +8,14 @@ import logging
 from typing import Optional, BinaryIO
 from datetime import timedelta
 from urllib.parse import urlparse
+from urllib3 import Timeout
 from minio import Minio
 from minio.error import S3Error
 import hashlib
+import signal
+from contextlib import contextmanager
+
+from infra.storage_keys import generate_document_key
 
 logger = logging.getLogger(__name__)
 
@@ -35,15 +40,21 @@ class MinioStorage:
         self.bucket = os.getenv("MINIO_BUCKET", "legal-documents")
         self.secure = os.getenv("MINIO_SECURE", "false").lower() == "true"
 
-        # Initialize client
+        # Timeout configuration (in seconds)
+        # Default: 10s connect, 30s read - prevents hanging on network issues
+        timeout_seconds = int(os.getenv("MINIO_TIMEOUT_SECONDS", "30"))
+
+        # Initialize client with timeout
         self.client = Minio(
             self.endpoint,
             access_key=self.access_key,
             secret_key=self.secret_key,
-            secure=self.secure
+            secure=self.secure,
+            timeout=Timeout(connect=10.0, read=float(timeout_seconds))
         )
 
         logger.info(f"📦 MinIO client initialized for {self.endpoint}")
+        logger.info(f"📦 MinIO timeout: {timeout_seconds}s read, 10s connect")
         logger.info(f"📦 MinIO public endpoint for presigned URLs: {self.public_endpoint}")
 
     def _normalize_endpoint(self, endpoint: str) -> str:
@@ -100,8 +111,13 @@ class MinioStorage:
         Returns:
             Presigned URL for PUT operation (using public endpoint for browser access)
         """
-        # Generate object key with client_id for multi-tenancy isolation
-        object_name = f"clients/{client_id}/cases/{case_id}/runs/{run_id}/docs/{filename}"
+        # Generate object key with standardized utility
+        object_name = generate_document_key(
+            client_id=client_id,
+            case_id=case_id,
+            run_id=run_id,
+            filename=filename
+        )
 
         try:
             # Generate presigned PUT URL
@@ -359,17 +375,45 @@ class MinioStorage:
         """
         return hashlib.sha256(data).hexdigest()
 
-    def health_check(self) -> bool:
+    def health_check(self, timeout_override: Optional[int] = None) -> bool:
         """
-        Check if MinIO is accessible
+        Check if MinIO is accessible with timeout protection
+
+        Args:
+            timeout_override: Override timeout in seconds (default: 5s for health checks)
 
         Returns:
-            True if healthy
+            True if healthy, False if unreachable or timeout
+
+        Note:
+            Uses a shorter timeout (5s default) than regular operations to fail fast
+            during health checks and prevent blocking API startup.
         """
+        timeout = timeout_override or 5
+
+        @contextmanager
+        def timeout_handler(seconds):
+            """Context manager for operation timeout"""
+            def _timeout_handler(signum, frame):
+                raise TimeoutError(f"Operation timed out after {seconds}s")
+
+            # Set up signal handler for timeout (Unix-like systems only)
+            old_handler = signal.signal(signal.SIGALRM, _timeout_handler)
+            signal.alarm(seconds)
+            try:
+                yield
+            finally:
+                signal.alarm(0)  # Cancel alarm
+                signal.signal(signal.SIGALRM, old_handler)
+
         try:
-            # Try to list buckets as a health check
-            self.client.list_buckets()
+            # Try to list buckets as a health check with timeout
+            with timeout_handler(timeout):
+                self.client.list_buckets()
             return True
+        except TimeoutError as e:
+            logger.error(f"MinIO health check timed out after {timeout}s: {e}")
+            return False
         except Exception as e:
             logger.error(f"MinIO health check failed: {e}")
             return False
