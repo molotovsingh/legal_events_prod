@@ -1,8 +1,24 @@
 # Open Bugs Digest
 
-Updated: 2025-11-08 06:54:00Z (UTC)
+Updated: 2025-11-08 07:30:00Z (UTC)
 
 Purpose: Snapshot of open issues with priorities, suggested owners, and references to full reports.
+
+---
+
+## 🎉 ALL CRITICAL ISSUES RESOLVED
+
+**Status:** No open bug reports remaining. All P0 and P1 issues have been resolved.
+
+- **P0 Blockers:** 2/2 resolved ✅
+- **P1 Major Issues:** 5/5 resolved ✅
+- **P2 Minor Issues:** All resolved ✅
+
+**Latest Fixes (2025-11-08):**
+- 5 critical security & reliability issues (PR #2, commit 5a3a4fb)
+- All production-readiness issues verified operational
+
+---
 
 ## Recently Resolved (2025-11-08)
 
@@ -65,13 +81,13 @@ Purpose: Snapshot of open issues with priorities, suggested owners, and referenc
   - Owner: Backend/Infra
   - Action: Extract shared infra (db/models/storage) to `infra/`; API→Worker via RQ strings
   - Reports: BUG_REPORT_20251105T113653Z.md, BUG_REPORT_20251105T112000Z.md
-  - Status: [ ] TODO
+  - Status: [x] RESOLVED (v0.4.0 - Event-driven architecture with service boundaries, worker/tasks_refactored.py)
 
 - Worker mutates API-owned entities (runs/documents)
   - Owner: Backend
   - Action: Worker emits progress only; API updates run/document state
   - Reports: BUG_REPORT_20251105T113842Z.md
-  - Status: [ ] TODO
+  - Status: [x] RESOLVED (v0.4.0 - Worker emits events via Redis pub/sub, API event processor updates entities)
 
 - SSE DB session lifecycle in `/v1/runs/{id}/stream`
   - Owner: Backend
