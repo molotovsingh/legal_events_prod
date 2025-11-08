@@ -1,0 +1,323 @@
+# =============================================================================
+# STAGING ENVIRONMENT DOCKER COMPOSE
+# =============================================================================
+#
+# PURPOSE: Deploy staging environment for testing before production
+#
+# USAGE:
+#   1. Create .env.staging from template (see .env.staging.template)
+#   2. Start: docker compose -f docker-compose.staging.yml --env-file .env.staging up -d
+#   3. Monitor: docker compose -f docker-compose.staging.yml logs -f
+#   4. Stop: docker compose -f docker-compose.staging.yml down
+#
+# NOTES:
+#   - Uses different container names to avoid conflicts with dev/prod
+#   - Uses separate volumes for isolation
+#   - Uses different ports (offset by +10) to allow parallel environments
+#   - Network is isolated from other environments
+#
+# =============================================================================
+
+version: '3.8'
+
+services:
+  # PostgreSQL Database (Staging)
+  postgres:
+    image: postgres:16-alpine
+    container_name: legal_events_staging_db
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-legal_events_staging}
+      POSTGRES_USER: ${POSTGRES_USER:-legal_user_staging}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "5442:5432"  # Offset by +10 to avoid conflicts
+    volumes:
+      - postgres_staging_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-legal_user_staging} -d ${POSTGRES_DB:-legal_events_staging}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    networks:
+      - staging_network
+
+  # Redis for job queue and caching (Staging)
+  redis:
+    image: redis:7-alpine
+    container_name: legal_events_staging_redis
+    ports:
+      - "6389:6379"  # Offset by +10
+    volumes:
+      - redis_staging_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+    networks:
+      - staging_network
+
+  # MinIO S3-compatible storage (Staging)
+  minio:
+    image: minio/minio:latest
+    container_name: legal_events_staging_minio
+    ports:
+      - "9010:9000"     # API port (offset by +10)
+      - "9011:9001"     # Console port (offset by +10)
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_staging_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+    networks:
+      - staging_network
+
+  # FastAPI Backend (Staging)
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: legal_events_staging_api
+    ports:
+      - "8010:8000"  # Offset by +10
+    environment:
+      # Application Environment
+      APP_ENV: ${APP_ENV:-staging}
+      LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-legal_user_staging}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-legal_events_staging}
+      REDIS_URL: redis://redis:6379
+
+      # MinIO Configuration
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-minio:9000}
+      MINIO_PUBLIC_ENDPOINT: ${MINIO_PUBLIC_ENDPOINT}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      MINIO_BUCKET: ${MINIO_BUCKET:-legal-documents-staging}
+      MINIO_SECURE: ${MINIO_SECURE:-false}
+
+      # JWT Configuration
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
+      JWT_EXPIRY_HOURS: ${JWT_EXPIRY_HOURS:-12}
+
+      # CORS Configuration
+      CORS_ORIGINS: ${CORS_ORIGINS}
+
+      # Python Configuration
+      PYTHONUNBUFFERED: 1
+
+      # LLM Provider API Keys
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      OPENCODEZEN_API_KEY: ${OPENCODEZEN_API_KEY:-}
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    command:
+      - sh
+      - -c
+      - |
+        echo '🔧 Staging API initialization starting...'
+        echo 'Waiting for database...'
+        sleep 5
+        python3 << 'PYEOF'
+        import psycopg2
+        import sys
+        import os
+
+        conn = None
+        cur = None
+        try:
+          db_url = os.environ.get('DATABASE_URL')
+          if not db_url:
+            print("ERROR: DATABASE_URL environment variable not set", file=sys.stderr)
+            sys.exit(1)
+          conn = psycopg2.connect(db_url)
+          cur = conn.cursor()
+          sqls = [
+            "DO $$$$ BEGIN CREATE TYPE userrole AS ENUM ('admin', 'case_manager', 'reviewer'); EXCEPTION WHEN duplicate_object THEN null; END $$$$;",
+            "DO $$$$ BEGIN CREATE TYPE runstatus AS ENUM ('queued', 'processing', 'partial', 'success', 'failed'); EXCEPTION WHEN duplicate_object THEN null; END $$$$;",
+            "DO $$$$ BEGIN CREATE TYPE documentstatus AS ENUM ('pending', 'processing', 'success', 'failed'); EXCEPTION WHEN duplicate_object THEN null; END $$$$;",
+            "DO $$$$ BEGIN CREATE TYPE clientstatus AS ENUM ('active', 'inactive', 'suspended'); EXCEPTION WHEN duplicate_object THEN null; END $$$$;",
+            "DO $$$$ BEGIN CREATE TYPE casestatus AS ENUM ('open', 'closed', 'archived'); EXCEPTION WHEN duplicate_object THEN null; END $$$$;"
+          ]
+          for sql in sqls:
+            cur.execute(sql)
+          conn.commit()
+          print("✅ Successfully created PostgreSQL ENUM types")
+        except psycopg2.OperationalError as e:
+          print(f"❌ Database connection error: {e}", file=sys.stderr)
+          sys.exit(1)
+        except psycopg2.Error as e:
+          print(f"❌ SQL execution error: {e}", file=sys.stderr)
+          sys.exit(1)
+        except Exception as e:
+          print(f"❌ Unexpected error during ENUM creation: {e}", file=sys.stderr)
+          sys.exit(1)
+        finally:
+          if cur:
+            cur.close()
+          if conn:
+            conn.close()
+        PYEOF
+        echo '🔄 Running database migrations...'
+        alembic upgrade head
+        echo '🚀 Starting Staging API server...'
+        uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    networks:
+      - staging_network
+
+  # Background Worker (Staging)
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    container_name: legal_events_staging_worker
+    environment:
+      # Application Environment
+      APP_ENV: ${APP_ENV:-staging}
+      LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-legal_user_staging}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-legal_events_staging}
+      REDIS_URL: redis://redis:6379
+
+      # MinIO Configuration
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-minio:9000}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      MINIO_BUCKET: ${MINIO_BUCKET:-legal-documents-staging}
+
+      # Python Configuration
+      PYTHONUNBUFFERED: 1
+
+      # LLM Provider API Keys
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      OPENCODEZEN_API_KEY: ${OPENCODEZEN_API_KEY:-}
+
+    depends_on:
+      - redis
+      - postgres
+      - minio
+    command: |
+      sh -c "echo '🔧 Staging Worker starting...' && python -m worker.main"
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 4G
+        reservations:
+          cpus: '1'
+          memory: 1G
+    networks:
+      - staging_network
+
+  # Frontend UI (Staging)
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: legal_events_staging_ui
+    ports:
+      - "3010:80"  # Offset by +10
+    environment:
+      # Point frontend to staging API
+      API_URL: http://localhost:8010
+    depends_on:
+      - api
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
+    networks:
+      - staging_network
+
+volumes:
+  postgres_staging_data:
+    name: legal_events_staging_postgres_data
+  redis_staging_data:
+    name: legal_events_staging_redis_data
+  minio_staging_data:
+    name: legal_events_staging_minio_data
+
+networks:
+  staging_network:
+    name: legal_events_staging_network
+    driver: bridge
+
+# =============================================================================
+# OPERATIONAL NOTES
+# =============================================================================
+#
+# Access points (when running):
+# - API: http://localhost:8010
+# - Frontend: http://localhost:3010
+# - MinIO Console: http://localhost:9011
+# - Postgres: localhost:5442
+# - Redis: localhost:6389
+#
+# Useful commands:
+# - Health check: docker compose -f docker-compose.staging.yml ps
+# - View logs: docker compose -f docker-compose.staging.yml logs -f api worker
+# - Restart service: docker compose -f docker-compose.staging.yml restart api
+# - Shell into container: docker compose -f docker-compose.staging.yml exec api sh
+# - Database access: docker compose -f docker-compose.staging.yml exec postgres psql -U legal_user_staging -d legal_events_staging
+#
+# Cleanup:
+# - Stop all: docker compose -f docker-compose.staging.yml down
+# - Remove volumes: docker compose -f docker-compose.staging.yml down -v
+# - Full cleanup: docker compose -f docker-compose.staging.yml down -v --rmi all
+#
+# =============================================================================
