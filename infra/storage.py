@@ -35,8 +35,16 @@ class MinioStorage:
         # Public endpoint for browser presigned URLs (must be accessible from browser)
         self.public_endpoint = self._normalize_endpoint(public_endpoint_raw)
 
-        self.access_key = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
-        self.secret_key = os.getenv("MINIO_SECRET_KEY", "minioadmin123")
+        # Require explicit credentials - no defaults for security
+        self.access_key = os.getenv("MINIO_ACCESS_KEY")
+        self.secret_key = os.getenv("MINIO_SECRET_KEY")
+        
+        if not self.access_key or not self.secret_key:
+            raise ValueError(
+                "MINIO_ACCESS_KEY and MINIO_SECRET_KEY must be set in environment. "
+                "Do not use default credentials in production for security reasons."
+            )
+        
         self.bucket = os.getenv("MINIO_BUCKET", "legal-documents")
         self.secure = os.getenv("MINIO_SECURE", "false").lower() == "true"
 
@@ -192,7 +200,13 @@ class MinioStorage:
             logger.info(f"✅ Uploaded {file_path} to {object_name}")
             return True
         except S3Error as e:
-            logger.error(f"Failed to upload file: {e}")
+            logger.error(f"Failed to upload file {file_path}: {e.code} - {e.message}")
+            return False
+        except FileNotFoundError as e:
+            logger.error(f"File not found: {file_path}")
+            return False
+        except Exception as e:
+            logger.error(f"Unexpected error uploading file {file_path}: {type(e).__name__} - {e}")
             return False
 
     def upload_bytes(
@@ -229,7 +243,10 @@ class MinioStorage:
             logger.info(f"✅ Uploaded {len(data)} bytes to {object_name}")
             return True
         except S3Error as e:
-            logger.error(f"Failed to upload bytes: {e}")
+            logger.error(f"Failed to upload bytes to {object_name}: {e.code} - {e.message}")
+            return False
+        except Exception as e:
+            logger.error(f"Unexpected error uploading bytes to {object_name}: {type(e).__name__} - {e}")
             return False
 
     def download_file(
@@ -256,7 +273,10 @@ class MinioStorage:
             logger.info(f"✅ Downloaded {object_name} to {file_path}")
             return True
         except S3Error as e:
-            logger.error(f"Failed to download file: {e}")
+            logger.error(f"Failed to download file {object_name}: {e.code} - {e.message}")
+            return False
+        except Exception as e:
+            logger.error(f"Unexpected error downloading {object_name}: {type(e).__name__} - {e}")
             return False
 
     def download_bytes(self, object_name: str) -> Optional[bytes]:
@@ -277,7 +297,10 @@ class MinioStorage:
             logger.debug(f"Downloaded {len(data)} bytes from {object_name}")
             return data
         except S3Error as e:
-            logger.error(f"Failed to download bytes: {e}")
+            logger.error(f"Failed to download bytes from {object_name}: {e.code} - {e.message}")
+            return None
+        except Exception as e:
+            logger.error(f"Unexpected error downloading bytes from {object_name}: {type(e).__name__} - {e}")
             return None
 
     def delete_object(self, object_name: str) -> bool:
@@ -295,7 +318,10 @@ class MinioStorage:
             logger.info(f"✅ Deleted {object_name}")
             return True
         except S3Error as e:
-            logger.error(f"Failed to delete object: {e}")
+            logger.error(f"Failed to delete object {object_name}: {e.code} - {e.message}")
+            return False
+        except Exception as e:
+            logger.error(f"Unexpected error deleting {object_name}: {type(e).__name__} - {e}")
             return False
 
     def list_objects(self, prefix: str) -> list:
@@ -316,7 +342,10 @@ class MinioStorage:
             )
             return [obj.object_name for obj in objects]
         except S3Error as e:
-            logger.error(f"Failed to list objects: {e}")
+            logger.error(f"Failed to list objects with prefix '{prefix}': {e.code} - {e.message}")
+            return []
+        except Exception as e:
+            logger.error(f"Unexpected error listing objects with prefix '{prefix}': {type(e).__name__} - {e}")
             return []
 
     def object_exists(self, object_name: str) -> bool:
@@ -332,7 +361,10 @@ class MinioStorage:
         try:
             self.client.stat_object(self.bucket, object_name)
             return True
-        except S3Error:
+        except S3Error as e:
+            # Log error details for debugging (404 is expected for non-existent objects)
+            if e.code != "NoSuchKey":
+                logger.debug(f"S3Error checking object existence for {object_name}: {e.code} - {e.message}")
             return False
 
     def get_object_metadata(self, object_name: str) -> Optional[dict]:
@@ -414,15 +446,29 @@ class MinioStorage:
             return False
 
 
-# Singleton instance (optional)
+# Singleton instance with thread safety
+import threading
+
 _storage_instance = None
+_storage_lock = threading.Lock()
 
 
 def get_storage() -> MinioStorage:
     """
-    Get singleton storage instance
+    Get singleton storage instance (thread-safe)
+    
+    Uses double-checked locking pattern to ensure only one instance
+    is created even in multi-threaded environments.
     """
     global _storage_instance
-    if _storage_instance is None:
-        _storage_instance = MinioStorage()
-    return _storage_instance
+    
+    # First check without lock (fast path)
+    if _storage_instance is not None:
+        return _storage_instance
+    
+    # Acquire lock for initialization (slow path)
+    with _storage_lock:
+        # Double-check inside lock to prevent race condition
+        if _storage_instance is None:
+            _storage_instance = MinioStorage()
+        return _storage_instance

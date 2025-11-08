@@ -13,9 +13,21 @@ from datetime import timedelta
 
 logger = logging.getLogger(__name__)
 
-# Redis connection
+# Redis connection with error handling
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
-redis_conn = redis.from_url(REDIS_URL)
+
+try:
+    redis_conn = redis.from_url(REDIS_URL)
+    # Test connection
+    redis_conn.ping()
+    logger.info(f"✅ Redis connection established: {REDIS_URL}")
+except redis.ConnectionError as e:
+    logger.error(f"❌ Failed to connect to Redis at {REDIS_URL}: {e}")
+    logger.error("Application cannot function without Redis. Please ensure Redis is running.")
+    raise SystemExit(1) from e
+except Exception as e:
+    logger.error(f"❌ Unexpected error connecting to Redis: {e}")
+    raise
 
 # Queue configurations
 QUEUES = {

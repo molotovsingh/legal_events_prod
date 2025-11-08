@@ -35,6 +35,11 @@ class APIEventProcessor:
     """
     Processes worker events and updates API-owned entities.
     Runs in a background thread to consume events from Redis.
+    
+    Resource Management:
+    - Closes Redis connection on shutdown
+    - Gracefully stops consumer and background thread
+    - Can be used as context manager for automatic cleanup
     """
     
     def __init__(self, redis_url: str):
@@ -42,6 +47,16 @@ class APIEventProcessor:
         self.consumer = WorkerEventConsumer(self.redis_conn)
         self.thread = None
         self.running = False
+    
+    def __enter__(self):
+        """Context manager entry"""
+        self.start()
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit - ensures cleanup"""
+        self.stop()
+        return False
         
     def start(self):
         """Start processing events in background thread"""
@@ -55,11 +70,19 @@ class APIEventProcessor:
         logger.info("API Event Processor started")
         
     def stop(self):
-        """Stop processing events"""
+        """Stop processing events and cleanup resources"""
         self.running = False
         self.consumer.stop()
         if self.thread:
             self.thread.join(timeout=5)
+        
+        # Close Redis connection to prevent resource leak
+        try:
+            self.redis_conn.close()
+            logger.info("API Event Processor Redis connection closed")
+        except Exception as e:
+            logger.warning(f"Error closing Redis connection: {e}")
+        
         logger.info("API Event Processor stopped")
         
     def _run(self):
