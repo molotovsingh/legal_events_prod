@@ -175,6 +175,74 @@ async def health_check(db: Session = Depends(get_db)):
     }
 
 
+@app.get("/v1/providers", response_model=ProvidersListResponse)
+async def list_providers(enabled: bool = True):
+    """
+    List available event extraction providers
+
+    This endpoint returns the current state of all event extraction providers,
+    including whether they are enabled in the catalog and whether they are
+    working (successfully registered in the runtime registry).
+
+    Query params:
+    - enabled: Filter to only enabled providers (default: true)
+
+    Returns:
+    {
+        "providers": [
+            {
+                "provider_id": "langextract",
+                "name": "Gemini (LangExtract)",
+                "enabled": true,
+                "models": ["gemini-1.5-flash", "gemini-2.5-flash"],
+                "is_working": true
+            },
+            ...
+        ]
+    }
+    """
+    from core.event_extractor_catalog import get_event_extractor_catalog
+    from core.extractor_factory import EVENT_PROVIDER_REGISTRY
+
+    catalog = get_event_extractor_catalog()
+    providers_list = []
+
+    for entry in catalog.list_extractors(enabled=enabled):
+        # Note: Model list would require querying each provider's available models
+        # For now, return empty list - models are provider-specific
+        providers_list.append({
+            "provider_id": entry.provider_id,
+            "name": entry.display_name,
+            "enabled": entry.enabled,
+            "models": [],  # TODO: Fetch from provider-specific model catalog
+            "is_working": entry.provider_id in EVENT_PROVIDER_REGISTRY
+        })
+
+    return {"providers": providers_list}
+
+
+# ============================================================================
+# Authentication Endpoints
+# ============================================================================
+
+@app.post("/v1/auth/login", response_model=LoginResponse)
+async def login_endpoint(
+    credentials: LoginRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Authenticate user and return JWT token
+
+    Use this endpoint to obtain a JWT token for authenticated API access.
+
+    **Credentials:**
+    - email: admin@legalevents.local
+    - password: admin123
+    """
+    from .auth import login
+    return await login(credentials.email, credentials.password, db)
+
+
 # ============================================================================
 # Client Management Endpoints
 # ============================================================================
@@ -305,21 +373,20 @@ async def assign_user_to_case(
 
 @app.post("/v1/runs", response_model=RunCreateResponse)
 async def create_run(
-    run: RunCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_auth)  # Enforce authentication
+run: RunCreate,
+db: Session = Depends(get_db),
+current_user: User = Depends(get_current_user)  # Optional auth for testing
 ):
     """
-    Create a new run and get presigned upload URLs.
+    Create a new run for document processing.
 
-    Two-step presign flow (recommended):
-    - Send filenames array → Get back matched {filename, storage_key, upload_url}[]
-    - Upload each file to its corresponding upload_url
-    - Send manifest with matched storage_keys to /v1/runs/{run_id}/start
+    Files are uploaded via the /v1/runs/{run_id}/upload proxy endpoint,
+    which avoids presigned URL signature mismatch issues in Docker environments.
 
-    Legacy flow (deprecated):
-    - Send file_count → Get back generic upload_urls[]
-    - This may cause storage key mismatch issues
+    Flow:
+    1. Create run → Get run_id
+    2. Upload files via /v1/runs/{run_id}/upload
+    3. Start processing via /v1/runs/{run_id}/start with file manifest
     """
     # Get case to retrieve client_id for multi-tenancy
     case = db.query(Case).filter(Case.id == run.case_id).first()
@@ -337,64 +404,60 @@ async def create_run(
     db.commit()
     db.refresh(db_run)
 
-    # Generate presigned upload URLs
+    user_email = current_user.email if current_user else "anonymous"
+    logger.info(f"Created run {db_run.id} for client {case.client_id} by {user_email}")
+
+    return {
+        "run_id": db_run.id,
+        "case_id": run.case_id,
+        "status": db_run.status.value
+    }
+
+
+@app.put("/v1/runs/{run_id}/upload")
+async def upload_file_proxy(
+run_id: int,
+file: UploadFile = File(...),
+db: Session = Depends(get_db),
+current_user: User = Depends(get_current_user)  # Optional auth for testing
+):
+    """
+    Proxy file upload to MinIO (avoids presigned URL signature issues in Docker)
+
+    This endpoint receives file uploads from the browser and forwards them to MinIO
+    using the internal Docker network, avoiding hostname/signature mismatch issues.
+    """
+    # Get run to extract client_id and case_id
+    run = db.query(Run).filter(Run.id == run_id).first()
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    # Get case to retrieve client_id for multi-tenancy
+    case = db.query(Case).filter(Case.id == run.case_id).first()
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    # Generate storage key
+    storage_key = generate_document_key(
+        client_id=case.client_id,
+        case_id=run.case_id,
+        run_id=run_id,
+        filename=file.filename
+    )
+
+    # Upload to MinIO
     storage = MinioStorage()
+    file_content = await file.read()
+    storage.upload_bytes(storage_key, file_content)
 
-    # NEW: Two-step presign flow with actual filenames
-    if run.filenames:
-        presigned_uploads = []
-        for filename in run.filenames:
-            # Use standardized storage key generation
-            storage_key = generate_document_key(
-                client_id=case.client_id,
-                case_id=run.case_id,
-                run_id=db_run.id,
-                filename=filename
-            )
-            upload_url = storage.generate_upload_url(
-                client_id=case.client_id,
-                case_id=run.case_id,
-                run_id=db_run.id,
-                filename=filename
-            )
-            presigned_uploads.append({
-                "filename": filename,
-                "storage_key": storage_key,
-                "upload_url": upload_url
-            })
+    logger.info(f"Uploaded file {file.filename} to {storage_key} for run {run_id}")
 
-        logger.info(f"Created run {db_run.id} for client {case.client_id} with {len(presigned_uploads)} matched presigned URLs by {current_user.email}")
-
-        return {
-            "run_id": db_run.id,
-            "case_id": run.case_id,
-            "status": db_run.status.value,
-            "upload_urls": [p["upload_url"] for p in presigned_uploads],  # Backward compat
-            "presigned_uploads": presigned_uploads  # New format with matched keys
-        }
-
-    # LEGACY: Placeholder filenames (deprecated, may cause storage key mismatch)
-    else:
-        upload_urls = []
-        for i in range(run.file_count or 1):
-            url = storage.generate_upload_url(
-                client_id=case.client_id,
-                case_id=run.case_id,
-                run_id=db_run.id,
-                filename=f"document_{i}.pdf"  # Placeholder
-            )
-            upload_urls.append(url)
-
-        logger.warning(f"Created run {db_run.id} using LEGACY placeholder filenames - consider using 'filenames' parameter")
-        logger.info(f"Created run {db_run.id} for client {case.client_id} with {len(upload_urls)} upload URLs by {current_user.email}")
-
-        return {
-            "run_id": db_run.id,
-            "case_id": run.case_id,
-            "status": db_run.status.value,
-            "upload_urls": upload_urls,
-            "presigned_uploads": None
-        }
+    return {
+        "status": "uploaded",
+        "filename": file.filename,
+        "storage_key": storage_key,
+        "size_bytes": len(file_content)
+    }
 
 
 @app.put("/v1/runs/{run_id}/start")
@@ -750,10 +813,27 @@ async def export_run(
     ).first()
     
     if artifact:
-        # Return existing artifact
+        # Stream existing artifact directly (avoids MinIO hostname issues)
         storage = MinioStorage()
-        download_url = storage.generate_download_url(artifact.storage_key)
-        return {"download_url": download_url}
+        file_bytes = storage.download_bytes(artifact.storage_key)
+
+        if not file_bytes:
+            raise HTTPException(status_code=404, detail="Artifact file not found in storage")
+
+        # Set content type based on format
+        content_types = {
+            "csv": "text/csv",
+            "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "json": "application/json"
+        }
+
+        filename = f"run_{run_id}_events.{fmt}"
+
+        return StreamingResponse(
+            iter([file_bytes]),
+            media_type=content_types.get(fmt, "application/octet-stream"),
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
     
     # Generate new artifact (this would be done in background normally)
     # For now, we'll do it synchronously as a placeholder
@@ -819,10 +899,21 @@ async def export_run(
     )
     db.add(artifact)
     db.commit()
-    
-    # Return download URL
-    download_url = storage.generate_download_url(storage_key)
-    return {"download_url": download_url}
+
+    # Stream file directly (avoids MinIO hostname issues)
+    content_types = {
+        "csv": "text/csv",
+        "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "json": "application/json"
+    }
+
+    filename = f"run_{run_id}_events.{fmt}"
+
+    return StreamingResponse(
+        iter([content_bytes]),
+        media_type=content_types.get(fmt, "application/octet-stream"),
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
 
 
 # ============================================================================

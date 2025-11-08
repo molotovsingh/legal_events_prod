@@ -194,13 +194,22 @@ def _build_event_provider_registry() -> Dict[str, Callable[[DoclingConfig, Any, 
     This function reads factory_callable strings from the catalog and dynamically
     imports them to build the registry. Only whitelisted import paths are allowed.
 
+    Strategy:
+    1. Check current module for pre-imported functions FIRST (introspection)
+    2. Fall back to dynamic import only if not found in current module
+    3. Add systematic fallbacks for all pre-imported factories
+
     Returns:
         Dict mapping provider_id to factory function
     """
+    import sys
     from .event_extractor_catalog import get_event_extractor_catalog
 
     catalog = get_event_extractor_catalog()
     registry = {}
+
+    # Get reference to current module for introspection
+    current_module = sys.modules[__name__]
 
     # Get all enabled extractors with factory callables
     for entry in catalog.list_extractors(enabled=True):
@@ -218,25 +227,47 @@ def _build_event_provider_registry() -> Dict[str, Callable[[DoclingConfig, Any, 
                 )
                 continue
 
-            # Dynamically import factory function
-            module_name, func_name = entry.factory_callable.rsplit('.', 1)
+            # Extract function name
+            func_name = entry.factory_callable.rsplit('.', 1)[1]
+
+            # Strategy 1: Try to get function from current module first (all are pre-imported)
+            if hasattr(current_module, func_name):
+                factory_func = getattr(current_module, func_name)
+                registry[entry.provider_id] = factory_func
+                logger.debug(f"✅ Registered {entry.provider_id} → {func_name} (from current module)")
+                continue
+
+            # Strategy 2: Fall back to dynamic import if not in current module
+            module_name = entry.factory_callable.rsplit('.', 1)[0]
             module = importlib.import_module(module_name)
             factory_func = getattr(module, func_name)
 
             registry[entry.provider_id] = factory_func
-            logger.debug(f"✅ Registered {entry.provider_id} → {entry.factory_callable}")
+            logger.debug(f"✅ Registered {entry.provider_id} → {entry.factory_callable} (dynamic import)")
 
         except (ImportError, AttributeError, ValueError) as e:
-            logger.warning(
-                f"Failed to load factory for {entry.provider_id} "
-                f"from '{entry.factory_callable}': {e}. Skipping."
+            logger.error(
+                f"❌ Failed to load factory for {entry.provider_id} "
+                f"from '{entry.factory_callable}': {type(e).__name__}: {e}"
             )
             continue
 
-    # Fallback: Ensure LangExtract is available as safe default
-    if "langextract" not in registry:
-        logger.warning("LangExtract not found in dynamic registry, adding fallback")
-        registry["langextract"] = _create_langextract_event_extractor
+    # Fallback: Ensure all pre-imported providers are available
+    # This protects against dynamic import failures in worker runtime environment
+    FALLBACK_FACTORIES = {
+        "langextract": _create_langextract_event_extractor,
+        "openrouter": _create_openrouter_event_extractor,
+        "openai": _create_openai_event_extractor,
+        "anthropic": _create_anthropic_event_extractor,
+        "deepseek": _create_deepseek_event_extractor,
+        "opencode_zen": _create_opencode_zen_event_extractor,
+        "google": _create_google_event_extractor,
+    }
+
+    for provider_id, factory_func in FALLBACK_FACTORIES.items():
+        if provider_id not in registry:
+            logger.warning(f"{provider_id} not found in dynamic registry, adding fallback")
+            registry[provider_id] = factory_func
 
     logger.info(f"🏭 Built event provider registry with {len(registry)} extractors: {list(registry.keys())}")
     return registry

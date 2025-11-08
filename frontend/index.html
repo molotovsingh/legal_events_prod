@@ -63,13 +63,73 @@
     <div class="container mx-auto px-4 py-8">
         <!-- Header -->
         <div class="bg-white shadow-lg rounded-lg mb-8 p-6">
-            <h1 class="text-3xl font-bold text-gray-800 mb-2">⚖️ Legal Events Extraction v2</h1>
-            <p class="text-gray-600">Test Interface for Document Processing</p>
-            
+            <div class="flex justify-between items-start">
+                <div>
+                    <h1 class="text-3xl font-bold text-gray-800 mb-2">⚖️ Legal Events Extraction v2</h1>
+                    <p class="text-gray-600">Test Interface for Document Processing</p>
+                </div>
+
+                <!-- Auth Status -->
+                <div class="text-right">
+                    <div id="authStatus" class="mb-2">
+                        <span id="userInfo" class="text-sm text-gray-600"></span>
+                    </div>
+                    <button id="loginBtn" onclick="showLoginModal()"
+                            class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 text-sm">
+                        Login
+                    </button>
+                    <button id="logoutBtn" onclick="logout()"
+                            class="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 text-sm hidden">
+                        Logout
+                    </button>
+                </div>
+            </div>
+
             <!-- Health Status -->
             <div id="healthStatus" class="mt-4 p-3 bg-gray-100 rounded">
                 <span class="text-sm font-semibold">System Status:</span>
                 <span id="statusText" class="text-sm ml-2">Checking...</span>
+            </div>
+        </div>
+
+        <!-- Login Modal -->
+        <div id="loginModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div class="bg-white rounded-lg p-8 max-w-md w-full mx-4">
+                <h2 class="text-2xl font-bold mb-4">Login</h2>
+                <div id="loginError" class="hidden bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4"></div>
+                <form onsubmit="login(event)">
+                    <div class="mb-4">
+                        <label class="block text-gray-700 text-sm font-bold mb-2" for="loginEmail">
+                            Email
+                        </label>
+                        <input type="email" id="loginEmail" value="admin@legalevents.local"
+                               class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+                               required>
+                    </div>
+                    <div class="mb-6">
+                        <label class="block text-gray-700 text-sm font-bold mb-2" for="loginPassword">
+                            Password
+                        </label>
+                        <input type="password" id="loginPassword" value="admin123"
+                               class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+                               required>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <button type="submit"
+                                class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
+                            Sign In
+                        </button>
+                        <button type="button" onclick="hideLoginModal()"
+                                class="bg-gray-500 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
+                            Cancel
+                        </button>
+                    </div>
+                </form>
+                <div class="mt-4 text-sm text-gray-600">
+                    <p><strong>Default credentials:</strong></p>
+                    <p>Email: admin@legalevents.local</p>
+                    <p>Password: admin123</p>
+                </div>
             </div>
         </div>
 
@@ -195,6 +255,18 @@
             return window.location.origin.replace(':3000', ':8000');
         })();
 
+        // Configure axios to include JWT token from localStorage in all requests
+        axios.interceptors.request.use(
+            config => {
+                const token = localStorage.getItem('authToken');
+                if (token) {
+                    config.headers.Authorization = `Bearer ${token}`;
+                }
+                return config;
+            },
+            error => Promise.reject(error)
+        );
+
         let currentRunId = null;
 
         /**
@@ -223,16 +295,26 @@
                 // Clear existing options
                 select.innerHTML = '';
 
-                // Add options from API, sorted by recommended first
-                const recommended = providers.filter(p => p.recommended);
-                const others = providers.filter(p => !p.recommended);
+                // Sort: working providers first, then non-working
+                const working = providers.filter(p => p.is_working);
+                const nonWorking = providers.filter(p => !p.is_working);
 
-                for (const provider of [...recommended, ...others]) {
+                // Add working providers
+                for (const provider of working) {
                     const option = document.createElement('option');
                     option.value = provider.provider_id;
-                    const icon = provider.recommended ? '⭐' : '';
-                    option.textContent = `${provider.display_name} ${icon}`;
-                    option.title = provider.notes;
+                    option.textContent = `${provider.name} ✅`;
+                    option.title = `Working - Models: ${provider.models.join(', ')}`;
+                    select.appendChild(option);
+                }
+
+                // Add non-working providers (disabled)
+                for (const provider of nonWorking) {
+                    const option = document.createElement('option');
+                    option.value = provider.provider_id;
+                    option.textContent = `${provider.name} ⚠️ Not Working`;
+                    option.title = 'Provider registration failed';
+                    option.disabled = true;
                     select.appendChild(option);
                 }
 
@@ -249,9 +331,6 @@
                 const select = document.getElementById('providerSelect');
                 select.innerHTML = `
                     <option value="langextract">Gemini (LangExtract) ⭐ Working</option>
-                    <option value="openrouter">OpenRouter (Llama 3.3)</option>
-                    <option value="anthropic">Anthropic (Claude)</option>
-                    <option value="openai">OpenAI (GPT-4)</option>
                 `;
             }
         }
@@ -358,71 +437,62 @@
             uploadResult.innerHTML = '<div class="spinner"></div> Processing...';
 
             try {
-                // Step 1: Create run with actual filenames (new two-step flow)
+                // Step 1: Create run
                 const filenames = Array.from(files).map(f => f.name);
                 const runResponse = await axios.post(`${API_URL}/v1/runs`, {
                     case_id: parseInt(caseId),
                     provider: provider,
-                    filenames: filenames  // Send actual filenames
+                    filenames: filenames
                 });
 
                 const runId = runResponse.data.run_id;
-                const presignedUploads = runResponse.data.presigned_uploads;
 
-                // Validate response format
-                if (!presignedUploads || presignedUploads.length !== files.length) {
-                    throw new Error(
-                        `Presigned upload count mismatch: expected ${files.length}, got ${presignedUploads ? presignedUploads.length : 0}. ` +
-                        `Please verify files and try again.`
-                    );
-                }
-
-                // Step 2: Upload files using matched presigned URLs
+                // Step 2: Upload files via proxy endpoint (avoids presigned URL signature issues)
                 const manifest = [];
                 for (let i = 0; i < files.length; i++) {
                     const file = files[i];
-                    const presigned = presignedUploads[i];
 
-                    // Verify filename match (safety check)
-                    if (presigned.filename !== file.name) {
-                        throw new Error(
-                            `Filename mismatch at index ${i}: expected "${file.name}", got "${presigned.filename}"`
-                        );
-                    }
+                    // Create FormData for multipart upload
+                    const formData = new FormData();
+                    formData.append('file', file);
 
-                    // Upload file to presigned URL
-                    await axios.put(presigned.upload_url, file, {
-                        headers: {
-                            'Content-Type': file.type || 'application/octet-stream'
+                    // Upload via API proxy endpoint
+                    const uploadResponse = await axios.put(
+                        `${API_URL}/v1/runs/${runId}/upload`,
+                        formData,
+                        {
+                            headers: {
+                                'Content-Type': 'multipart/form-data'
+                            }
                         }
-                    });
+                    );
 
-                    // Calculate real SHA-256 hash using Web Crypto API
+                    // Calculate SHA-256 hash
                     const sha256 = await calculateFileSHA256(file);
 
-                    // Use the storage_key from the API response (guaranteed to match)
+                    // Build manifest entry
                     manifest.push({
                         filename: file.name,
                         size_bytes: file.size,
                         sha256: sha256,
-                        storage_key: presigned.storage_key,  // Use matched key from API
-                        mime_type: file.type
+                        storage_key: uploadResponse.data.storage_key,
+                        mime_type: file.type || 'application/octet-stream'
                     });
                 }
-                
-                // Start processing
+
+                // Step 3: Start processing
                 await axios.put(`${API_URL}/v1/runs/${runId}/start`, {
                     files: manifest
                 });
-                
-                uploadResult.innerHTML = 
+
+                uploadResult.innerHTML =
                     `<span class="text-green-600">✅ Run ${runId} started!</span>`;
-                
+
                 // Start monitoring
                 monitorRun(runId);
-                
+
             } catch (error) {
-                uploadResult.innerHTML = 
+                uploadResult.innerHTML =
                     `<span class="text-red-600">❌ Error: ${error.response?.data?.detail || error.message}</span>`;
             }
         }
@@ -622,6 +692,81 @@
             // Placeholder - in production, load runs for this case
             alert(`View case ${caseId} - Feature coming soon!`);
         }
+
+        // ============================================================================
+        // Authentication Functions
+        // ============================================================================
+
+        function showLoginModal() {
+            document.getElementById('loginModal').classList.remove('hidden');
+        }
+
+        function hideLoginModal() {
+            document.getElementById('loginModal').classList.add('hidden');
+            document.getElementById('loginError').classList.add('hidden');
+        }
+
+        async function login(event) {
+            event.preventDefault();
+
+            const email = document.getElementById('loginEmail').value;
+            const password = document.getElementById('loginPassword').value;
+            const errorDiv = document.getElementById('loginError');
+
+            try {
+                const response = await axios.post(`${API_URL}/v1/auth/login`, {
+                    email: email,
+                    password: password
+                });
+
+                // Store token in localStorage
+                localStorage.setItem('authToken', response.data.access_token);
+                localStorage.setItem('userInfo', JSON.stringify(response.data.user));
+
+                // Update UI
+                updateAuthUI();
+                hideLoginModal();
+
+                // Show success message
+                alert(`Welcome, ${response.data.user.name}!`);
+
+            } catch (error) {
+                console.error('Login error:', error);
+                errorDiv.textContent = error.response?.data?.detail || 'Login failed. Please check your credentials.';
+                errorDiv.classList.remove('hidden');
+            }
+        }
+
+        function logout() {
+            localStorage.removeItem('authToken');
+            localStorage.removeItem('userInfo');
+            updateAuthUI();
+            alert('You have been logged out');
+        }
+
+        function updateAuthUI() {
+            const token = localStorage.getItem('authToken');
+            const userInfoStr = localStorage.getItem('userInfo');
+            const loginBtn = document.getElementById('loginBtn');
+            const logoutBtn = document.getElementById('logoutBtn');
+            const userInfo = document.getElementById('userInfo');
+
+            if (token && userInfoStr) {
+                const user = JSON.parse(userInfoStr);
+                userInfo.textContent = `Logged in as: ${user.name} (${user.role})`;
+                loginBtn.classList.add('hidden');
+                logoutBtn.classList.remove('hidden');
+            } else {
+                userInfo.textContent = 'Not logged in';
+                loginBtn.classList.remove('hidden');
+                logoutBtn.classList.add('hidden');
+            }
+        }
+
+        // Initialize auth UI on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            updateAuthUI();
+        });
     </script>
 </body>
 </html>

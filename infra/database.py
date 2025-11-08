@@ -132,19 +132,21 @@ def populate_initial_data():
             db.add(model)
 
         # Add default admin user
+        # Password: admin123 (change this in production!)
         admin_user = User(
             email="admin@legalevents.local",
             name="System Administrator",
             role=UserRole.ADMIN,
-            password_hash="$2b$12$dummy_hash_replace_with_real"  # TODO: Hash real password
+            password_hash="$2b$12$aBsJ9XZspWYCp3DuZZ0mY.63NZUkelf4lHVpb1JtDonMZLBbXRovS"
         )
         db.add(admin_user)
 
         # Add sample user
         sample_user = User(
-            email="paralegal@example.com",
-            name="Sample Paralegal",
-            role=UserRole.REVIEWER
+        email="paralegal@example.com",
+        name="Sample Paralegal",
+        role=UserRole.REVIEWER,
+            password_hash="$2b$12$aBsJ9XZspWYCp3DuZZ0mY.63NZUkelf4lHVpb1JtDonMZLBbXRovS"  # Same as admin: "admin123"
         )
         db.add(sample_user)
 

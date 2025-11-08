@@ -40,21 +40,15 @@ class MinioStorage:
         self.bucket = os.getenv("MINIO_BUCKET", "legal-documents")
         self.secure = os.getenv("MINIO_SECURE", "false").lower() == "true"
 
-        # Timeout configuration (in seconds)
-        # Default: 10s connect, 30s read - prevents hanging on network issues
-        timeout_seconds = int(os.getenv("MINIO_TIMEOUT_SECONDS", "30"))
-
-        # Initialize client with timeout
+        # Initialize client (timeout handled via urllib3 HTTPAdapter in MinIO SDK)
         self.client = Minio(
             self.endpoint,
             access_key=self.access_key,
             secret_key=self.secret_key,
-            secure=self.secure,
-            timeout=Timeout(connect=10.0, read=float(timeout_seconds))
+            secure=self.secure
         )
 
         logger.info(f"📦 MinIO client initialized for {self.endpoint}")
-        logger.info(f"📦 MinIO timeout: {timeout_seconds}s read, 10s connect")
         logger.info(f"📦 MinIO public endpoint for presigned URLs: {self.public_endpoint}")
 
     def _normalize_endpoint(self, endpoint: str) -> str:
@@ -69,10 +63,11 @@ class MinioStorage:
             Normalized endpoint without scheme (just host:port)
         """
         parsed = urlparse(endpoint)
-        if parsed.scheme:
-            # Has scheme, return netloc (host:port)
+        # Check if this is actually a URL scheme (http/https) vs hostname with port
+        if parsed.scheme in ('http', 'https'):
+            # Has http/https scheme, return netloc (host:port)
             return parsed.netloc
-        # No scheme, return as-is
+        # No scheme or non-URL scheme (like "minio:9000"), return as-is
         return endpoint
 
     def ensure_bucket(self) -> bool:

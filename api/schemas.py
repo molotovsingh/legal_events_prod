@@ -112,25 +112,14 @@ class UserResponse(BaseModel):
 
 class RunCreate(BaseModel):
     case_id: int
-    provider: Optional[str] = "openrouter"
-    model: Optional[str] = "meta-llama/llama-3.3-70b-instruct"
-    file_count: Optional[int] = Field(1, ge=1, le=100)  # For backward compatibility (deprecated)
-    filenames: Optional[List[str]] = None  # New: actual filenames for presigned URLs
-
-
-class PresignedUploadURL(BaseModel):
-    """Presigned upload URL with matched filename and storage key"""
-    filename: str
-    storage_key: str
-    upload_url: str
+    provider: Optional[str] = "langextract"
+    model: Optional[str] = "gemini-1.5-flash"
 
 
 class RunCreateResponse(BaseModel):
     run_id: int
     case_id: int
     status: str
-    upload_urls: List[str]  # Deprecated: for backward compatibility
-    presigned_uploads: Optional[List[PresignedUploadURL]] = None  # New: matched URLs with keys
 
 
 class FileManifestItem(BaseModel):
@@ -241,6 +230,22 @@ class ModelInfo(BaseModel):
 
 
 # ============================================================================
+# Provider Schemas
+# ============================================================================
+
+class ProviderInfo(BaseModel):
+    provider_id: str
+    name: str
+    enabled: bool
+    models: List[str]
+    is_working: bool
+
+
+class ProvidersListResponse(BaseModel):
+    providers: List[ProviderInfo]
+
+
+# ============================================================================
 # Progress/Streaming Schemas
 # ============================================================================
 
@@ -272,6 +277,21 @@ class ExportResponse(BaseModel):
     download_url: str
     expires_at: Optional[datetime]
     size_bytes: Optional[int]
+
+
+# ============================================================================
+# Authentication Schemas
+# ============================================================================
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class LoginResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: Dict[str, Any]
 
 
 # ============================================================================
