@@ -337,6 +337,7 @@
 
         // Check system health and load providers on load
         window.onload = () => {
+            updateAuthUI();
             checkHealth();
             loadProviders();
             loadRuns();
@@ -390,8 +391,16 @@
                 document.getElementById('clientId').value = client.id;
                 
             } catch (error) {
+                const errorMsg = error.response?.data?.detail || error.message;
+                const statusCode = error.response?.status;
+                
+                let displayMsg = errorMsg;
+                if (statusCode === 401) {
+                    displayMsg = 'Authentication required. Please login first.';
+                }
+                
                 document.getElementById('clientResult').innerHTML = 
-                    `<span class="text-red-600">❌ Error: ${error.response?.data?.detail || error.message}</span>`;
+                    `<span class="text-red-600">❌ Error: ${displayMsg}</span>`;
             }
         }
 
@@ -417,8 +426,16 @@
                 document.getElementById('caseIdForRun').value = caseData.id;
                 
             } catch (error) {
+                const errorMsg = error.response?.data?.detail || error.message;
+                const statusCode = error.response?.status;
+                
+                let displayMsg = errorMsg;
+                if (statusCode === 401) {
+                    displayMsg = 'Authentication required. Please login first.';
+                }
+                
                 document.getElementById('caseResult').innerHTML = 
-                    `<span class="text-red-600">❌ Error: ${error.response?.data?.detail || error.message}</span>`;
+                    `<span class="text-red-600">❌ Error: ${displayMsg}</span>`;
             }
         }
 
@@ -438,11 +455,9 @@
 
             try {
                 // Step 1: Create run
-                const filenames = Array.from(files).map(f => f.name);
                 const runResponse = await axios.post(`${API_URL}/v1/runs`, {
                     case_id: parseInt(caseId),
-                    provider: provider,
-                    filenames: filenames
+                    provider: provider
                 });
 
                 const runId = runResponse.data.run_id;
@@ -727,8 +742,11 @@
                 updateAuthUI();
                 hideLoginModal();
 
-                // Show success message
-                alert(`Welcome, ${response.data.user.name}!`);
+                // Show success message and reload page to ensure clean state
+                alert(`Welcome, ${response.data.user.name}! Page will reload.`);
+                
+                // Reload page to ensure axios interceptor picks up the token
+                window.location.reload();
 
             } catch (error) {
                 console.error('Login error:', error);
