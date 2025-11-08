@@ -70,9 +70,15 @@ if __name__ == "__main__":
     import os
     
     endpoint = os.getenv("MINIO_ENDPOINT", "minio:9000")
-    access_key = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
-    secret_key = os.getenv("MINIO_SECRET_KEY", "minioadmin123")
+    access_key = os.getenv("MINIO_ACCESS_KEY")
+    secret_key = os.getenv("MINIO_SECRET_KEY")
     bucket_name = os.getenv("MINIO_BUCKET", "legal-documents")
+    
+    # Require explicit credentials for security
+    if not access_key or not secret_key:
+        logger.error("MINIO_ACCESS_KEY and MINIO_SECRET_KEY must be set in environment")
+        logger.error("Do not use default credentials in production")
+        sys.exit(1)
     
     logger.info("=" * 60)
     logger.info("MinIO CORS Configuration Startup Script")

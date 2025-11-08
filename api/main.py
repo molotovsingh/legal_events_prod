@@ -929,15 +929,28 @@ async def stream_run_progress(
 
     Note: Proper DB session management for long-lived SSE connections.
     Each loop iteration gets a fresh db session to avoid connection lifecycle issues.
+    
+    Safety Features:
+    - Maximum iterations: 1800 (1 hour at 2s intervals)
+    - Timeout protection prevents infinite loops
+    - Graceful termination on completion or error
     """
     from sse_starlette.sse import EventSourceResponse
     import asyncio
     import json
     from infra.database import SessionLocal
 
+    # Safety limits to prevent infinite loops
+    MAX_ITERATIONS = 1800  # 1 hour at 2-second intervals
+    POLL_INTERVAL = 2  # seconds between updates
+
     async def event_generator():
         """Generate SSE events for run progress"""
-        while True:
+        iteration = 0
+        
+        while iteration < MAX_ITERATIONS:
+            iteration += 1
+            
             # Create fresh DB session for each iteration (SSE streams are long-lived)
             db = SessionLocal()
             try:
@@ -981,11 +994,21 @@ async def stream_run_progress(
                     break
 
                 # Wait before next update
-                await asyncio.sleep(2)
+                await asyncio.sleep(POLL_INTERVAL)
 
             finally:
                 # Always close the session to avoid connection leaks
                 db.close()
+        
+        # Safety timeout reached
+        if iteration >= MAX_ITERATIONS:
+            yield {
+                "event": "timeout",
+                "data": json.dumps({
+                    "error": "Stream timeout reached after 1 hour",
+                    "run_id": run_id
+                })
+            }
 
     return EventSourceResponse(event_generator())
 
