@@ -1,8 +1,43 @@
 # Open Bugs Digest
 
-Updated: 2025-11-07 14:30:00Z (UTC)
+Updated: 2025-11-08 06:54:00Z (UTC)
 
 Purpose: Snapshot of open issues with priorities, suggested owners, and references to full reports.
+
+## Recently Resolved (2025-11-08)
+
+**5 Critical Security & Reliability Fixes (commit bda2a16)**
+
+1. **Thread Safety in Storage Singleton** ✅
+   - Fixed race condition in get_storage() using threading.Lock()
+   - Implements double-checked locking pattern
+   - Files: infra/storage.py
+
+2. **Hardcoded MinIO Credentials** ✅
+   - Removed default credentials ('minioadmin'/'minioadmin123')
+   - Requires explicit MINIO_ACCESS_KEY and MINIO_SECRET_KEY env vars
+   - Files: infra/storage.py, setup_minio_cors.py
+
+3. **SSE Streaming Infinite Loop** ✅
+   - Added MAX_ITERATIONS limit (1800 = 1 hour)
+   - Sends timeout event if exceeded
+   - Files: api/main.py
+
+4. **Redis Connection Exception Handling** ✅
+   - Added connection validation with SystemExit on failure
+   - Files: infra/queue.py
+
+5. **Event Processor Resource Leak** ✅
+   - Added redis_conn.close() and context manager support
+   - Files: api/event_processor.py
+
+6. **S3Error Exception Handling** ✅
+   - Captures error.code and error.message for all operations
+   - Files: infra/storage.py
+
+**Bug report retired:** bug_reports/retired/BUG_REPORT_20251107T033224Z.md
+
+---
 
 ## P0 — Blockers
 
