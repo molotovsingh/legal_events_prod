@@ -475,21 +475,42 @@ async def start_run(
     If idempotency_key is provided and a run with this key was already started,
     return the previous result instead of creating duplicates.
     """
-    # Handle idempotency via Redis
+    # Handle idempotency via Redis with an atomic lock to avoid races
     idempotency_key = manifest.idempotency_key
     if idempotency_key:
         try:
             import redis
             r = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379"))
             cache_key = f"idempotency:start_run:{idempotency_key}"
+            lock_key = f"idempotency:start_run:lock:{idempotency_key}"
 
-            # Check if this idempotency key was already processed
+            # If we already have a cached result, return it immediately
             cached_result = r.get(cache_key)
             if cached_result:
                 logger.info(f"Idempotency hit for key {idempotency_key}")
+                try:
+                    r.close()
+                except Exception:
+                    pass
                 return json.loads(cached_result)
+
+            # Try to acquire processing lock (SETNX with short TTL)
+            acquired = r.set(lock_key, "1", nx=True, ex=300)
+            if not acquired:
+                # Another request is processing the same idempotency key
+                cached_result = r.get(cache_key)
+                try:
+                    r.close()
+                except Exception:
+                    pass
+                if cached_result:
+                    return json.loads(cached_result)
+                # No cached result yet: ask client to retry later
+                raise HTTPException(status_code=409, detail="Duplicate request in progress for this idempotency key. Please retry.")
+        except HTTPException:
+            raise
         except Exception as e:
-            logger.warning(f"Idempotency check failed: {e}, proceeding without cache")
+            logger.warning(f"Idempotency check/lock failed: {e}, proceeding without cache")
 
     # Get run
     run = db.query(Run).filter(Run.id == run_id).first()
@@ -533,15 +554,20 @@ async def start_run(
         "message": "Run processing started"
     }
 
-    # Cache the result for idempotency (24-hour TTL)
+    # Cache the result for idempotency (24-hour TTL) and release lock
     if idempotency_key:
         try:
             import redis
             r = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379"))
             cache_key = f"idempotency:start_run:{idempotency_key}"
+            lock_key = f"idempotency:start_run:lock:{idempotency_key}"
             r.setex(cache_key, 86400, json.dumps(response))
+            try:
+                r.delete(lock_key)
+            finally:
+                r.close()
         except Exception as e:
-            logger.warning(f"Failed to cache idempotency result: {e}")
+            logger.warning(f"Failed to finalize idempotency cache: {e}")
 
     # current_user is now guaranteed by require_auth dependency
     logger.info(f"Started run {run_id} with job {job_id} by {current_user.email}")
@@ -583,7 +609,7 @@ async def get_run(
             "total": total_docs,
             "processed": processed_docs,
             "failed": failed_docs,
-            "pending": total_docs - processed_docs - failed_docs
+            "pending": max(0, total_docs - processed_docs - failed_docs)
         },
         "timings": {
             "docling_seconds": run.docling_seconds,
@@ -878,8 +904,14 @@ async def export_run(
         df.to_excel(output, index=False, sheet_name="Legal Events")
         content_bytes = output.getvalue()
     
-    # Upload to storage
-    case = db.query(Case).filter(Case.id == events[0].run.case_id).first()
+    # Determine case via the run to avoid relying on event relationships
+    run_obj = db.query(Run).filter(Run.id == run_id).first()
+    if not run_obj:
+        raise HTTPException(status_code=404, detail="Run not found")
+    case = db.query(Case).filter(Case.id == run_obj.case_id).first()
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found for run")
+
     # Use standardized storage key generation
     storage_key = generate_artifact_key(
         client_id=case.client_id,
@@ -887,18 +919,30 @@ async def export_run(
         run_id=run_id,
         format=fmt
     )
-    
-    storage.upload_bytes(storage_key, content_bytes)
-    
-    # Create artifact record
-    artifact = Artifact(
-        run_id=run_id,
-        kind=fmt,
-        storage_key=storage_key,
-        size_bytes=len(content_bytes)
-    )
-    db.add(artifact)
-    db.commit()
+
+    # Upload to storage first; if DB commit fails later, delete the object
+    uploaded_ok = storage.upload_bytes(storage_key, content_bytes)
+    if not uploaded_ok:
+        raise HTTPException(status_code=500, detail="Failed to upload artifact to storage")
+
+    # Create artifact record with cleanup on failure
+    try:
+        artifact = Artifact(
+            run_id=run_id,
+            kind=fmt,
+            storage_key=storage_key,
+            size_bytes=len(content_bytes)
+        )
+        db.add(artifact)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        try:
+            storage.delete_object(storage_key)
+        except Exception:
+            logger.error("Failed to rollback uploaded artifact from storage after DB error")
+        logger.error(f"Failed to create artifact record: {e}")
+        raise HTTPException(status_code=500, detail="Failed to save artifact metadata")
 
     # Stream file directly (avoids MinIO hostname issues)
     content_types = {

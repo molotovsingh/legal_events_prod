@@ -66,8 +66,13 @@ def process_run(run_id: int, provider: str = "openrouter", model: str = None) ->
     db = SessionLocal()
     storage = MinioStorage()
     redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
-    redis_conn = redis.from_url(redis_url)
-    emitter = WorkerEventEmitter(redis_conn)
+    redis_conn = None
+    try:
+        redis_conn = redis.from_url(redis_url)
+    except Exception as e:
+        logger.error(f"Failed to create Redis connection: {e}")
+        # Continue without emitter; API will not receive progress events
+    emitter = WorkerEventEmitter(redis_conn) if redis_conn else None
     
     try:
         # READ run info (read-only)
@@ -78,7 +83,8 @@ def process_run(run_id: int, provider: str = "openrouter", model: str = None) ->
         logger.info(f"🚀 Starting processing for run {run_id}")
         
         # EMIT run started event (API will update status)
-        emitter.emit_run_started(run_id)
+        if emitter:
+            emitter.emit_run_started(run_id)
         start_time = datetime.utcnow()
         
         # READ documents to process (read-only) - includes failed docs for retry
@@ -109,7 +115,8 @@ def process_run(run_id: int, provider: str = "openrouter", model: str = None) ->
         
         if not documents:
             logger.warning(f"No documents to process for run {run_id} (no pending, failed, or stuck docs)")
-            emitter.emit_run_failed(run_id, "No documents to process")
+            if emitter:
+                emitter.emit_run_failed(run_id, "No documents to process")
             return {"error": "No documents to process"}
         
         # Initialize pipeline
@@ -133,11 +140,13 @@ def process_run(run_id: int, provider: str = "openrouter", model: str = None) ->
         
         # Process each document
         for doc in documents:
+            tmp_path = None
             try:
                 logger.info(f"📄 Processing document {doc.id}: {doc.filename}")
                 
                 # EMIT document started event
-                emitter.emit_document_started(run_id, doc.id)
+                if emitter:
+                    emitter.emit_document_started(run_id, doc.id)
                 doc_start = time.time()
                 
                 # Download document from storage
@@ -147,7 +156,8 @@ def process_run(run_id: int, provider: str = "openrouter", model: str = None) ->
                     storage.download_file(doc.storage_key, tmp_path)
                 
                 # Process with pipeline
-                emitter.emit_progress(run_id, f"Extracting text from {doc.filename}", doc.id)
+                if emitter:
+                    emitter.emit_progress(run_id, f"Extracting text from {doc.filename}", doc.id)
                 
                 # Create a file-like object for the pipeline
                 class FileWrapper:
@@ -188,21 +198,28 @@ def process_run(run_id: int, provider: str = "openrouter", model: str = None) ->
                 # WRITE events (worker's primary output)
                 events_created = 0
                 if results and results.get("events"):
-                    for event_data in results["events"]:
-                        event = Event(
-                            run_id=run_id,
-                            document_id=doc.id,
-                            number=event_data.get("number", events_created + 1),
-                            date=event_data.get("date", "Date not available"),
-                            event_particulars=event_data.get("event_particulars", ""),
-                            citation=event_data.get("citation", ""),
-                            document_reference=event_data.get("document_reference", doc.filename),
-                            confidence_score=event_data.get("confidence_score")
-                        )
-                        db.add(event)
-                        db.commit()
-                        events_created += 1
-                        emitter.emit_event_created(run_id, event.id, doc.id)
+                    try:
+                        # Transaction: either all events for this doc are persisted, or none
+                        with db.begin():
+                            for event_data in results["events"]:
+                                event = Event(
+                                    run_id=run_id,
+                                    document_id=doc.id,
+                                    number=event_data.get("number", events_created + 1),
+                                    date=event_data.get("date", "Date not available"),
+                                    event_particulars=event_data.get("event_particulars", ""),
+                                    citation=event_data.get("citation", ""),
+                                    document_reference=event_data.get("document_reference", doc.filename),
+                                    confidence_score=event_data.get("confidence_score")
+                                )
+                                db.add(event)
+                                db.flush()  # populate event.id without committing
+                                events_created += 1
+                                if emitter:
+                                    emitter.emit_event_created(run_id, event.id, doc.id)
+                    except Exception as e:
+                        logger.error(f"Failed to persist events for document {doc.id}: {e}")
+                        raise
                 
                 # WRITE artifacts (worker's secondary output)
                 # Note: The pipeline doesn't produce artifacts in this mode
@@ -214,25 +231,30 @@ def process_run(run_id: int, provider: str = "openrouter", model: str = None) ->
                 stats["events_extracted"] += events_created
                 
                 # EMIT document completed event
-                emitter.emit_document_completed(run_id, doc.id, {
-                    "pages": 0,  # Not tracked by pipeline
-                    "ocr_detected": False,  # Not tracked by pipeline
-                    "processing_time_seconds": doc_time,
-                    "events_created": events_created
-                })
-                
-                # Clean up temp file
-                os.unlink(tmp_path)
+                if emitter:
+                    emitter.emit_document_completed(run_id, doc.id, {
+                        "pages": 0,  # Not tracked by pipeline
+                        "ocr_detected": False,  # Not tracked by pipeline
+                        "processing_time_seconds": doc_time,
+                        "events_created": events_created
+                    })
                 
             except Exception as e:
                 logger.error(f"Failed to process document {doc.id}: {e}")
                 stats["documents_failed"] += 1
                 
                 # EMIT document failed event
-                emitter.emit_document_failed(run_id, doc.id, str(e))
+                if emitter:
+                    emitter.emit_document_failed(run_id, doc.id, str(e))
             
             finally:
                 stats["documents_processed"] += 1
+                # Ensure temporary file cleanup
+                try:
+                    if tmp_path and os.path.exists(tmp_path):
+                        os.unlink(tmp_path)
+                except Exception as _e:
+                    logger.warning(f"Failed to cleanup temp file {tmp_path}: {_e}")
         
         # Calculate final stats
         end_time = datetime.utcnow()
@@ -248,7 +270,8 @@ def process_run(run_id: int, provider: str = "openrouter", model: str = None) ->
         stats["total_seconds"] = total_time
         
         # EMIT run completed event
-        emitter.emit_run_completed(run_id, stats)
+        if emitter:
+            emitter.emit_run_completed(run_id, stats)
         
         logger.info(f"✅ Run {run_id} completed: {stats['documents_success']}/{stats['documents_processed']} successful")
         
@@ -262,7 +285,8 @@ def process_run(run_id: int, provider: str = "openrouter", model: str = None) ->
         logger.error(f"❌ Run {run_id} failed: {e}")
         
         # EMIT run failed event
-        emitter.emit_run_failed(run_id, str(e))
+        if emitter:
+            emitter.emit_run_failed(run_id, str(e))
         
         return {
             "success": False,
@@ -272,7 +296,11 @@ def process_run(run_id: int, provider: str = "openrouter", model: str = None) ->
         
     finally:
         db.close()
-        redis_conn.close()
+        try:
+            if redis_conn:
+                redis_conn.close()
+        except Exception:
+            pass
 
 
 def process_document(document_id: int, provider: str = "openrouter", model: str = None) -> Dict[str, Any]:
@@ -296,8 +324,12 @@ def process_document(document_id: int, provider: str = "openrouter", model: str 
     db = SessionLocal()
     storage = MinioStorage()
     redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
-    redis_conn = redis.from_url(redis_url)
-    emitter = WorkerEventEmitter(redis_conn)
+    redis_conn = None
+    try:
+        redis_conn = redis.from_url(redis_url)
+    except Exception as e:
+        logger.error(f"Failed to create Redis connection: {e}")
+    emitter = WorkerEventEmitter(redis_conn) if redis_conn else None
     
     try:
         # READ document info (read-only)
@@ -308,10 +340,12 @@ def process_document(document_id: int, provider: str = "openrouter", model: str 
         logger.info(f"📄 Processing document {document_id}: {doc.filename}")
         
         # EMIT document started event
-        emitter.emit_document_started(doc.run_id, document_id)
+        if emitter:
+            emitter.emit_document_started(doc.run_id, document_id)
         start_time = time.time()
         
         # Download and process
+        tmp_path = None
         _, ext = os.path.splitext(doc.filename)
         with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
             tmp_path = tmp.name
@@ -361,35 +395,41 @@ def process_document(document_id: int, provider: str = "openrouter", model: str 
         # WRITE events
         events_created = 0
         if results and results.get("events"):
-            for event_data in results["events"]:
-                event = Event(
-                    run_id=doc.run_id,
-                    document_id=document_id,
-                    number=event_data.get("number", events_created + 1),
-                    date=event_data.get("date", "Date not available"),
-                    event_particulars=event_data.get("event_particulars", ""),
-                    citation=event_data.get("citation", ""),
-                    document_reference=event_data.get("document_reference", doc.filename),
-                    confidence_score=event_data.get("confidence_score")
-                )
-                db.add(event)
-                db.commit()
-                events_created += 1
-                emitter.emit_event_created(doc.run_id, event.id, document_id)
+            try:
+                with db.begin():
+                    for event_data in results["events"]:
+                        event = Event(
+                            run_id=doc.run_id,
+                            document_id=document_id,
+                            number=event_data.get("number", events_created + 1),
+                            date=event_data.get("date", "Date not available"),
+                            event_particulars=event_data.get("event_particulars", ""),
+                            citation=event_data.get("citation", ""),
+                            document_reference=event_data.get("document_reference", doc.filename),
+                            confidence_score=event_data.get("confidence_score")
+                        )
+                        db.add(event)
+                        db.flush()
+                        events_created += 1
+                        if emitter:
+                            emitter.emit_event_created(doc.run_id, event.id, document_id)
+            except Exception as e:
+                logger.error(f"Failed to persist events for document {document_id}: {e}")
+                raise
         
         # Calculate processing time
         processing_time = time.time() - start_time
         
         # EMIT document completed event
-        emitter.emit_document_completed(doc.run_id, document_id, {
+        if emitter:
+            emitter.emit_document_completed(doc.run_id, document_id, {
             "processing_time_seconds": processing_time,
             "events_created": events_created,
             "pages": results.get("pages", 0),
             "ocr_detected": results.get("ocr_detected", False)
         })
         
-        # Clean up
-        os.unlink(tmp_path)
+        # Clean up handled in finally
         
         logger.info(f"✅ Document {document_id} processed: {events_created} events extracted")
         
@@ -404,7 +444,7 @@ def process_document(document_id: int, provider: str = "openrouter", model: str 
         logger.error(f"❌ Document {document_id} processing failed: {e}")
         
         # EMIT document failed event
-        if 'doc' in locals():
+        if 'doc' in locals() and emitter:
             emitter.emit_document_failed(doc.run_id, document_id, str(e))
         
         return {
@@ -414,8 +454,18 @@ def process_document(document_id: int, provider: str = "openrouter", model: str 
         }
         
     finally:
+        # Ensure temp file cleanup
+        try:
+            if 'tmp_path' in locals() and tmp_path and os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+        except Exception as _e:
+            logger.warning(f"Failed to cleanup temp file {tmp_path}: {_e}")
         db.close()
-        redis_conn.close()
+        try:
+            if redis_conn:
+                redis_conn.close()
+        except Exception:
+            pass
 
 
 def export_run_events(run_id: int, format: str = "csv") -> Dict[str, Any]:
@@ -467,6 +517,7 @@ def export_run_events(run_id: int, format: str = "csv") -> Dict[str, Any]:
         # Generate export file
         timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
         
+        tmp_path = None
         if format == "csv":
             filename = f"events_run_{run_id}_{timestamp}.csv"
             with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as tmp:
@@ -509,21 +560,36 @@ def export_run_events(run_id: int, format: str = "csv") -> Dict[str, Any]:
         
         # Upload to storage
         artifact_key = f"runs/{run_id}/exports/{filename}"
-        storage.upload_file(tmp_path, artifact_key)
+        uploaded = storage.upload_file(tmp_path, artifact_key)
+        if not uploaded:
+            return {"error": "Failed to upload export artifact"}
         
         # WRITE artifact record (worker output)
-        artifact = Artifact(
-            run_id=run_id,
-            kind=f"export_{format}",  # Correct field name
-            storage_key=artifact_key,
-            size_bytes=os.path.getsize(tmp_path) if os.path.exists(tmp_path) else 0,
-            expires_at=datetime.utcnow() + timedelta(days=7)  # Optional: add expiration
-        )
-        db.add(artifact)
-        db.commit()
+        try:
+            artifact = Artifact(
+                run_id=run_id,
+                kind=f"export_{format}",  # Correct field name
+                storage_key=artifact_key,
+                size_bytes=os.path.getsize(tmp_path) if os.path.exists(tmp_path) else 0,
+                expires_at=datetime.utcnow() + timedelta(days=7)  # Optional: add expiration
+            )
+            db.add(artifact)
+            db.commit()
+        except Exception as e:
+            db.rollback()
+            # Roll back the uploaded object to avoid orphaned files
+            try:
+                storage.delete_object(artifact_key)
+            except Exception as _e:
+                logger.error(f"Failed to delete orphaned artifact {artifact_key}: {_e}")
+            raise
         
-        # Clean up
-        os.unlink(tmp_path)
+        # Clean up temp file (best-effort)
+        try:
+            if tmp_path and os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+        except Exception as _e:
+            logger.warning(f"Failed to cleanup temp file {tmp_path}: {_e}")
         
         return {
             "success": True,
