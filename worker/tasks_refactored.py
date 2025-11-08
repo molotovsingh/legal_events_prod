@@ -163,10 +163,25 @@ def process_run(run_id: int, provider: str = "openrouter", model: str = None) ->
                 
                 file_obj = FileWrapper(tmp_path, doc.filename)
                 df, warning = pipeline.process_documents_for_legal_events([file_obj])
-                
+
                 # Convert DataFrame to event records
+                # CRITICAL: Rename display headers back to internal field names
                 if not df.empty:
-                    results = {"events": df.to_dict('records')}
+                    from core.constants import FIVE_COLUMN_HEADERS, INTERNAL_FIELDS
+
+                    # Create column mapping from display to internal names
+                    column_mapping = {
+                        FIVE_COLUMN_HEADERS[0]: INTERNAL_FIELDS[0],  # "No" -> "number"
+                        FIVE_COLUMN_HEADERS[1]: INTERNAL_FIELDS[1],  # "Date" -> "date"
+                        FIVE_COLUMN_HEADERS[2]: INTERNAL_FIELDS[2],  # "Event Particulars" -> "event_particulars"
+                        FIVE_COLUMN_HEADERS[3]: INTERNAL_FIELDS[3],  # "Citation" -> "citation"
+                        FIVE_COLUMN_HEADERS[4]: INTERNAL_FIELDS[4],  # "Document Reference" -> "document_reference"
+                    }
+
+                    # Rename only the columns that exist in the DataFrame
+                    df_renamed = df.rename(columns={k: v for k, v in column_mapping.items() if k in df.columns})
+
+                    results = {"events": df_renamed.to_dict('records')}
                 else:
                     results = {"events": []}
                 
