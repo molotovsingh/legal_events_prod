@@ -171,6 +171,16 @@
                            class="w-full p-2 border rounded mb-2">
                     <input type="file" id="fileInput" multiple accept=".pdf,.docx,.txt" 
                            class="w-full p-2 border rounded mb-2">
+                    
+                    <!-- Document Extractor Selection -->
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Document Extractor:</label>
+                    <select id="docExtractorSelect" class="w-full p-2 border rounded mb-2">
+                        <option value="docling">Docling (Local OCR) - FREE</option>
+                        <option value="qwen_vl">Qwen3-VL (Vision API) - $0.077/15 pages (for poor scans)</option>
+                    </select>
+                    
+                    <!-- Event Extractor Selection -->
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Event Extractor:</label>
                     <select id="providerSelect" class="w-full p-2 border rounded mb-2">
                         <option value="">Loading providers...</option>
                     </select>
@@ -444,6 +454,7 @@
             const caseId = document.getElementById('caseIdForRun').value;
             const files = document.getElementById('fileInput').files;
             const provider = document.getElementById('providerSelect').value;
+            const docExtractor = document.getElementById('docExtractorSelect').value;
 
             if (!clientId || !caseId || files.length === 0) {
                 alert('Please select client ID, case ID, and files');
@@ -454,10 +465,11 @@
             uploadResult.innerHTML = '<div class="spinner"></div> Processing...';
 
             try {
-                // Step 1: Create run
+                // Step 1: Create run with doc_extractor selection
                 const runResponse = await axios.post(`${API_URL}/v1/runs`, {
                     case_id: parseInt(caseId),
-                    provider: provider
+                    provider: provider,
+                    doc_extractor: docExtractor
                 });
 
                 const runId = runResponse.data.run_id;

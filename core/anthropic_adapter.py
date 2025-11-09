@@ -80,21 +80,30 @@ class AnthropicEventExtractor:
 
         if not text or not text.strip():
             logger.warning(f"⚠️ No text provided for {document_name} - creating fallback record")
+            logger.warning(f"   Text length: {len(text) if text else 0}, Stripped: {len(text.strip()) if text else 0}")
             return [self._create_fallback_record(document_name, "No text content to process")]
 
         try:
+            # Log input for debugging
+            logger.info(f"🔍 Extracting events from {document_name} (text length: {len(text)} chars, first 100: {text[:100]}...)")
+            
             # Call Anthropic API with retry logic
             response_data = self._call_anthropic_api_with_retry(text)
 
             if not response_data:
                 logger.error(f"❌ Anthropic API returned empty response for {document_name}")
+                logger.error(f"   Response data type: {type(response_data)}, value: {response_data}")
                 return [self._create_fallback_record(document_name, "Anthropic API returned empty response")]
+
+            # Log response for debugging
+            logger.info(f"📥 Received response for {document_name}: stop_reason={response_data.get('stop_reason')}, content_blocks={len(response_data.get('content', []))}")
 
             # Parse the response and extract legal events
             events = self._parse_anthropic_response(response_data, document_name)
 
             if not events:
                 logger.warning(f"⚠️ No events extracted from Anthropic response for {document_name}")
+                logger.warning(f"   Response content: {response_data.get('content', [])}")
                 return [self._create_fallback_record(document_name, "No legal events found in response")]
 
             logger.info(

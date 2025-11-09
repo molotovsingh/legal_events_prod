@@ -114,6 +114,7 @@ class RunCreate(BaseModel):
     case_id: int
     provider: Optional[str] = "langextract"
     model: Optional[str] = "gemini-1.5-flash"
+    doc_extractor: Optional[str] = "docling"  # Document extractor: 'docling' or 'qwen_vl'
 
 
 class RunCreateResponse(BaseModel):

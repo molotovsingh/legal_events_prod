@@ -398,6 +398,7 @@ current_user: User = Depends(get_current_user)  # Optional auth for testing
         case_id=run.case_id,
         provider=run.provider or "openrouter",
         model=run.model or "meta-llama/llama-3.3-70b-instruct",
+        doc_extractor=run.doc_extractor or "docling",
         status=RunStatus.QUEUED
     )
     db.add(db_run)

@@ -152,6 +152,7 @@ class Run(Base):
     # Model configuration
     provider = Column(String(50))  # openrouter, anthropic, openai, etc.
     model = Column(String(100))    # specific model name
+    doc_extractor = Column(String(50), default="docling")  # docling, qwen_vl, etc.
     prompt_version = Column(String(20), default="v1")  # v1, v2, etc.
 
     # Timing and cost tracking

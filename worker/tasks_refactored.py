@@ -119,11 +119,14 @@ def process_run(run_id: int, provider: str = "openrouter", model: str = None) ->
                 emitter.emit_run_failed(run_id, "No documents to process")
             return {"error": "No documents to process"}
         
-        # Initialize pipeline
+        # Initialize pipeline with doc_extractor from run configuration
+        doc_extractor = getattr(run, 'doc_extractor', None) or 'docling'  # Default to docling
+        logger.info(f"🔧 Initializing pipeline: doc_extractor={doc_extractor}, event_extractor={provider}, model={model}")
+        
         pipeline = LegalEventsPipeline(
             event_extractor=provider,
             runtime_model=model,
-            doc_extractor=None  # Use default
+            doc_extractor=doc_extractor
         )
         
         # Track processing stats
@@ -196,28 +199,37 @@ def process_run(run_id: int, provider: str = "openrouter", model: str = None) ->
                     results = {"events": []}
                 
                 # WRITE events (worker's primary output)
+                # Batch all events into single transaction
                 events_created = 0
                 if results and results.get("events"):
+                    events_to_add = []
                     try:
-                        # Transaction: either all events for this doc are persisted, or none
-                        with db.begin():
-                            for event_data in results["events"]:
-                                event = Event(
-                                    run_id=run_id,
-                                    document_id=doc.id,
-                                    number=event_data.get("number", events_created + 1),
-                                    date=event_data.get("date", "Date not available"),
-                                    event_particulars=event_data.get("event_particulars", ""),
-                                    citation=event_data.get("citation", ""),
-                                    document_reference=event_data.get("document_reference", doc.filename),
-                                    confidence_score=event_data.get("confidence_score")
-                                )
-                                db.add(event)
-                                db.flush()  # populate event.id without committing
-                                events_created += 1
-                                if emitter:
+                        # Collect all event objects first (no database operations yet)
+                        for event_data in results["events"]:
+                            event = Event(
+                                run_id=run_id,
+                                document_id=doc.id,
+                                number=event_data.get("number", len(events_to_add) + 1),
+                                date=event_data.get("date", "Date not available"),
+                                event_particulars=event_data.get("event_particulars", ""),
+                                citation=event_data.get("citation", ""),
+                                document_reference=event_data.get("document_reference", doc.filename),
+                                confidence_score=event_data.get("confidence_score")
+                            )
+                            events_to_add.append(event)
+                        
+                        # Single atomic operation: add all events and commit
+                        if events_to_add:
+                            db.add_all(events_to_add)
+                            db.commit()
+                            events_created = len(events_to_add)
+                            
+                            # Emit Redis events AFTER successful commit
+                            if emitter:
+                                for event in events_to_add:
                                     emitter.emit_event_created(run_id, event.id, doc.id)
                     except Exception as e:
+                        db.rollback()
                         logger.error(f"Failed to persist events for document {doc.id}: {e}")
                         raise
                 
@@ -393,27 +405,37 @@ def process_document(document_id: int, provider: str = "openrouter", model: str 
             results = {"events": []}
         
         # WRITE events
+        # Batch all events into single transaction
         events_created = 0
         if results and results.get("events"):
+            events_to_add = []
             try:
-                with db.begin():
-                    for event_data in results["events"]:
-                        event = Event(
-                            run_id=doc.run_id,
-                            document_id=document_id,
-                            number=event_data.get("number", events_created + 1),
-                            date=event_data.get("date", "Date not available"),
-                            event_particulars=event_data.get("event_particulars", ""),
-                            citation=event_data.get("citation", ""),
-                            document_reference=event_data.get("document_reference", doc.filename),
-                            confidence_score=event_data.get("confidence_score")
-                        )
-                        db.add(event)
-                        db.flush()
-                        events_created += 1
-                        if emitter:
+                # Collect all event objects first (no database operations yet)
+                for event_data in results["events"]:
+                    event = Event(
+                        run_id=doc.run_id,
+                        document_id=document_id,
+                        number=event_data.get("number", len(events_to_add) + 1),
+                        date=event_data.get("date", "Date not available"),
+                        event_particulars=event_data.get("event_particulars", ""),
+                        citation=event_data.get("citation", ""),
+                        document_reference=event_data.get("document_reference", doc.filename),
+                        confidence_score=event_data.get("confidence_score")
+                    )
+                    events_to_add.append(event)
+                
+                # Single atomic operation: add all events and commit
+                if events_to_add:
+                    db.add_all(events_to_add)
+                    db.commit()
+                    events_created = len(events_to_add)
+                    
+                    # Emit Redis events AFTER successful commit
+                    if emitter:
+                        for event in events_to_add:
                             emitter.emit_event_created(doc.run_id, event.id, document_id)
             except Exception as e:
+                db.rollback()
                 logger.error(f"Failed to persist events for document {document_id}: {e}")
                 raise
         

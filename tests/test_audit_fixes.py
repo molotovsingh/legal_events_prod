@@ -485,9 +485,57 @@ class TestBatchTransaction:
                         # Process run
                         result = process_run(test_data['run'].id)
         
-        # Verify all 50 events were created
+        # Verify all 50 events were created atomically
         events = db_session.query(Event).filter(Event.run_id == test_data['run'].id).all()
-        assert len(events) == 50
+        assert len(events) == 50, f"Expected 50 events, got {len(events)}"
+    
+    def test_commit_count_optimized(self, db_session, test_data):
+        """Test that events are committed in a single batch, not per-event"""
+        with patch('worker.tasks_refactored.MinioStorage') as mock_storage:
+            with patch('worker.tasks_refactored.LegalEventsPipeline') as mock_pipeline:
+                with patch('worker.tasks_refactored.SessionLocal', return_value=db_session):
+                    with patch('redis.from_url') as mock_redis_factory:
+                        # Mock Redis
+                        mock_redis = MagicMock()
+                        mock_redis_factory.return_value = mock_redis
+                        
+                        # Setup mocks
+                        mock_storage_instance = Mock()
+                        mock_storage_instance.download_file = Mock()
+                        mock_storage.return_value = mock_storage_instance
+                        
+                        # Create DataFrame with 10 events
+                        import pandas as pd
+                        from core.constants import FIVE_COLUMN_HEADERS
+                        df = pd.DataFrame([
+                            {FIVE_COLUMN_HEADERS[0]: i,
+                             FIVE_COLUMN_HEADERS[1]: "2025-01-01",
+                             FIVE_COLUMN_HEADERS[2]: f"Event {i}",
+                             FIVE_COLUMN_HEADERS[3]: "",
+                             FIVE_COLUMN_HEADERS[4]: "test.pdf"}
+                            for i in range(1, 11)
+                        ])
+                        
+                        mock_pipeline_instance = Mock()
+                        mock_pipeline_instance.process_documents_for_legal_events.return_value = (df, None)
+                        mock_pipeline.return_value = mock_pipeline_instance
+                        
+                        # Track commits
+                        original_commit = db_session.commit
+                        commit_count = [0]
+                        
+                        def counting_commit():
+                            commit_count[0] += 1
+                            return original_commit()
+                        
+                        db_session.commit = counting_commit
+                        
+                        # Process run
+                        result = process_run(test_data['run'].id)
+        
+        # Should only commit once per document (batch), not 10 times (per event)
+        # Note: There may be additional commits for document status updates
+        assert commit_count[0] <= 2, f"Too many commits: {commit_count[0]} (expected ≤2 for batch processing)"
 
 
 # ============================================================================
