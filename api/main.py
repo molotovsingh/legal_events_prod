@@ -1184,8 +1184,7 @@ async def get_worker_status():
         JSON with worker and queue statistics
     """
     try:
-        from infra.queue import get_worker_stats, get_queue_stats
-        import redis
+        from infra.queue import get_worker_stats, get_queue_stats, get_worker_heartbeats, cleanup_stale_workers
         
         # Get worker statistics from RQ
         worker_stats = get_worker_stats()
@@ -1201,27 +1200,53 @@ async def get_worker_status():
         total_queued = sum(q.get("queued", 0) for q in queue_stats.values())
         total_processing = sum(q.get("started", 0) for q in queue_stats.values())
         
-        # Check for worker heartbeats (if implemented)
-        try:
-            redis_conn = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379"))
-            heartbeat_keys = redis_conn.keys('worker:heartbeat:*')
-            active_heartbeats = len(heartbeat_keys) if heartbeat_keys else 0
-        except Exception:
-            active_heartbeats = None
+        # Get worker heartbeats with detailed data
+        heartbeats = get_worker_heartbeats()
+        active_heartbeats = len([h for h in heartbeats.values() if not h.get('is_stale', False)])
+        stale_heartbeats = len([h for h in heartbeats.values() if h.get('is_stale', False)])
+        
+        # Enrich worker data with heartbeat information
+        enriched_workers = []
+        for worker in worker_stats.get("workers", []):
+            worker_data = worker.copy()
+            worker_id = worker['name']
+            
+            if worker_id in heartbeats:
+                hb = heartbeats[worker_id]
+                worker_data['heartbeat'] = {
+                    'last_beat': hb['timestamp'],
+                    'seconds_ago': hb['seconds_since_heartbeat'],
+                    'is_alive': not hb['is_stale'],
+                    'hostname': hb.get('hostname'),
+                    'pid': hb.get('pid')
+                }
+            else:
+                worker_data['heartbeat'] = None
+            
+            enriched_workers.append(worker_data)
         
         # Determine health status
         workers_count = worker_stats.get("total_workers", 0)
-        healthy = workers_count > 0
+        healthy = workers_count > 0 and active_heartbeats > 0
+        
+        # Determine overall status
+        if workers_count == 0:
+            status = "degraded"
+        elif stale_heartbeats > 0:
+            status = "degraded"
+        else:
+            status = "healthy"
         
         return {
             "workers_registered": workers_count,
             "workers_with_heartbeat": active_heartbeats,
-            "workers": worker_stats.get("workers", []),
+            "workers_stale": stale_heartbeats,
+            "workers": enriched_workers,
             "queue_depth": total_queued,
             "jobs_processing": total_processing,
             "queues": queue_stats,
             "healthy": healthy,
-            "status": "healthy" if healthy else "degraded",
+            "status": status,
             "timestamp": datetime.utcnow().isoformat()
         }
     except Exception as e:
@@ -1238,6 +1263,34 @@ async def get_worker_status():
             "error": str(e),
             "timestamp": datetime.utcnow().isoformat()
         }
+
+
+@app.post("/v1/workers/cleanup")
+async def cleanup_stale_workers_endpoint(current_user: dict = Depends(get_current_user)):
+    """
+    Clean up stale worker registrations.
+    
+    Requires authentication. Removes workers that:
+    - Have no heartbeat OR
+    - Have a heartbeat older than 60 seconds
+    
+    Returns:
+        Number of stale workers cleaned up
+    """
+    try:
+        from infra.queue import cleanup_stale_workers
+        
+        cleaned_count = cleanup_stale_workers()
+        
+        return {
+            "status": "success",
+            "workers_cleaned": cleaned_count,
+            "message": f"Cleaned up {cleaned_count} stale worker(s)",
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Error cleaning up stale workers: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to cleanup workers: {str(e)}")
 
 
 if __name__ == "__main__":

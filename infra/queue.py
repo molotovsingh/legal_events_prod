@@ -335,3 +335,97 @@ class JobProgress:
     def update(self, percent: int, message: str = ""):
         """Update progress"""
         update_job_progress(self.job_id, percent, message)
+
+
+def get_worker_heartbeats() -> Dict[str, Any]:
+    """
+    Get all worker heartbeats from Redis
+    
+    Returns:
+        Dictionary mapping worker IDs to their heartbeat data
+    """
+    try:
+        import json
+        from datetime import datetime, timedelta
+        
+        # Get all heartbeat keys
+        heartbeat_keys = redis_conn.keys('worker:heartbeat:*')
+        
+        heartbeats = {}
+        now = datetime.utcnow()
+        
+        for key in heartbeat_keys:
+            try:
+                data = redis_conn.get(key)
+                if data:
+                    heartbeat = json.loads(data)
+                    worker_id = key.decode('utf-8').replace('worker:heartbeat:', '')
+                    
+                    # Calculate time since last heartbeat
+                    last_beat = datetime.fromisoformat(heartbeat['timestamp'])
+                    seconds_ago = (now - last_beat).total_seconds()
+                    heartbeat['seconds_since_heartbeat'] = seconds_ago
+                    heartbeat['is_stale'] = seconds_ago > 60  # Stale if >60s old
+                    
+                    heartbeats[worker_id] = heartbeat
+            except Exception as e:
+                logger.error(f"Failed to parse heartbeat {key}: {e}")
+        
+        return heartbeats
+    
+    except Exception as e:
+        logger.error(f"Failed to get worker heartbeats: {e}")
+        return {}
+
+
+def cleanup_stale_workers() -> int:
+    """
+    Clean up stale worker registrations in Redis
+    
+    A worker is considered stale if:
+    1. It has no heartbeat OR
+    2. Its heartbeat is older than 60 seconds
+    
+    Returns:
+        Number of stale workers cleaned up
+    """
+    try:
+        from datetime import datetime
+        import json
+        
+        workers = Worker.all(connection=redis_conn)
+        heartbeats = get_worker_heartbeats()
+        
+        cleaned_count = 0
+        
+        for worker in workers:
+            worker_id = worker.name
+            
+            # Check if worker has a recent heartbeat
+            if worker_id not in heartbeats:
+                # No heartbeat found - worker is stale
+                logger.warning(f"Cleaning up stale worker {worker_id} (no heartbeat)")
+                try:
+                    worker.register_death()
+                    cleaned_count += 1
+                except Exception as e:
+                    logger.error(f"Failed to clean up {worker_id}: {e}")
+            
+            elif heartbeats[worker_id].get('is_stale', False):
+                # Heartbeat is too old - worker is stale
+                seconds_ago = heartbeats[worker_id]['seconds_since_heartbeat']
+                logger.warning(f"Cleaning up stale worker {worker_id} (heartbeat {seconds_ago:.0f}s old)")
+                try:
+                    worker.register_death()
+                    cleaned_count += 1
+                except Exception as e:
+                    logger.error(f"Failed to clean up {worker_id}: {e}")
+        
+        if cleaned_count > 0:
+            logger.info(f"🧹 Cleaned up {cleaned_count} stale worker(s)")
+        
+        return cleaned_count
+    
+    except Exception as e:
+        logger.error(f"Failed to cleanup stale workers: {e}")
+        return 0
