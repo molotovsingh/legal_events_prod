@@ -174,6 +174,13 @@ services:
       context: .
       dockerfile: Dockerfile.worker
     container_name: legal_events_worker
+    restart: unless-stopped  # Auto-restart on failure
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'python -m worker.main' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
     environment:
       # Application Environment
       APP_ENV: ${APP_ENV:-development}

@@ -160,8 +160,22 @@ async def health_check(db: Session = Depends(get_db)):
         logger.error(f"Redis health check failed: {e}")
         queue_status = "unhealthy"
     
+    # Check workers (NEW)
+    try:
+        from infra.queue import get_worker_stats
+        worker_stats = get_worker_stats()
+        workers_count = worker_stats.get("total_workers", 0)
+        if workers_count == 0:
+            worker_status = "degraded"
+            logger.warning("⚠️ No workers registered - job processing unavailable")
+        else:
+            worker_status = "healthy"
+    except Exception as e:
+        logger.error(f"Worker health check failed: {e}")
+        worker_status = "unhealthy"
+    
     overall_status = "healthy" if all(
-        s == "healthy" for s in [db_status, storage_status, queue_status]
+        s == "healthy" for s in [db_status, storage_status, queue_status, worker_status]
     ) else "degraded"
     
     return {
@@ -170,7 +184,8 @@ async def health_check(db: Session = Depends(get_db)):
         "components": {
             "database": db_status,
             "storage": storage_status,
-            "queue": queue_status
+            "queue": queue_status,
+            "workers": worker_status
         }
     }
 
@@ -1153,6 +1168,76 @@ async def list_event_providers(
     except Exception as e:
         logger.error(f"Error listing providers: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to load providers: {str(e)}")
+
+
+@app.get("/v1/workers/status")
+async def get_worker_status():
+    """
+    Get current worker status and queue metrics.
+    
+    Used for health monitoring and alerting. Shows:
+    - Number of registered workers
+    - Worker details (names, queues, state)
+    - Queue depths and processing stats
+    
+    Returns:
+        JSON with worker and queue statistics
+    """
+    try:
+        from infra.queue import get_worker_stats, get_queue_stats
+        import redis
+        
+        # Get worker statistics from RQ
+        worker_stats = get_worker_stats()
+        
+        # Get queue statistics
+        queue_stats = {
+            "high": get_queue_stats("high"),
+            "default": get_queue_stats("default"),
+            "low": get_queue_stats("low")
+        }
+        
+        # Calculate total queue depth
+        total_queued = sum(q.get("queued", 0) for q in queue_stats.values())
+        total_processing = sum(q.get("started", 0) for q in queue_stats.values())
+        
+        # Check for worker heartbeats (if implemented)
+        try:
+            redis_conn = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379"))
+            heartbeat_keys = redis_conn.keys('worker:heartbeat:*')
+            active_heartbeats = len(heartbeat_keys) if heartbeat_keys else 0
+        except Exception:
+            active_heartbeats = None
+        
+        # Determine health status
+        workers_count = worker_stats.get("total_workers", 0)
+        healthy = workers_count > 0
+        
+        return {
+            "workers_registered": workers_count,
+            "workers_with_heartbeat": active_heartbeats,
+            "workers": worker_stats.get("workers", []),
+            "queue_depth": total_queued,
+            "jobs_processing": total_processing,
+            "queues": queue_stats,
+            "healthy": healthy,
+            "status": "healthy" if healthy else "degraded",
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Error getting worker status: {e}")
+        return {
+            "workers_registered": 0,
+            "workers_with_heartbeat": None,
+            "workers": [],
+            "queue_depth": 0,
+            "jobs_processing": 0,
+            "queues": {},
+            "healthy": False,
+            "status": "unhealthy",
+            "error": str(e),
+            "timestamp": datetime.utcnow().isoformat()
+        }
 
 
 if __name__ == "__main__":
