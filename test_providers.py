@@ -70,9 +70,13 @@ def test_provider(provider_name, display_name, required_keys):
         file_path = Path(TEST_PDF)
         text, extraction_method = processor.extract_text(file_path, "pdf")
         
-        if not text or len(text.strip()) < 50:
-            print(f"❌ FAIL: Text extraction failed or insufficient text ({len(text)} chars)")
+        if not text:
+            print(f"❌ FAIL: Text extraction failed (no text returned)")
             return {"status": "failed", "reason": "Text extraction failed"}
+        
+        if len(text.strip()) < 50:
+            print(f"❌ FAIL: Insufficient text extracted ({len(text)} chars)")
+            return {"status": "failed", "reason": "Insufficient text"}
         
         print(f"✅ Text extracted: {len(text):,} characters via {extraction_method}")
         
