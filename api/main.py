@@ -1170,7 +1170,7 @@ async def list_event_providers(
         raise HTTPException(status_code=500, detail=f"Failed to load providers: {str(e)}")
 
 
-@app.get("/v1/workers/status")
+@app.get("/v1/workers/status", response_model=WorkerStatusResponse)
 async def get_worker_status():
     """
     Get current worker status and queue metrics with heartbeat-aware liveness detection.
@@ -1183,10 +1183,10 @@ async def get_worker_status():
     - Queue depths and processing stats
     - Overall health status (boolean and string)
     
-    Health semantics (api/main.py:1230):
+    Health semantics:
         healthy = workers_registered > 0 AND workers_with_heartbeat > 0 AND workers_stale == 0
     
-    Status determination (api/main.py:1232-1240):
+    Status determination:
         - "degraded" if workers_registered == 0
         - "degraded" if active_heartbeats == 0
         - "degraded" if stale_heartbeats > 0

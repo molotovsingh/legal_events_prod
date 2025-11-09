@@ -48,14 +48,10 @@ The system provides two monitoring endpoints:
 
 ## Heartbeat Semantics
 
-- **Heartbeat TTL**: 60 seconds (infra/queue.py:368)
-- **Stale Threshold**: Heartbeat older than 60 seconds
+- **Heartbeat Interval**: 10 seconds (worker/main.py)
+- **Heartbeat TTL**: 30 seconds (worker/main.py)
+- **Stale Threshold**: Heartbeat older than 60 seconds (infra/queue.py)
 - **Healthy Criteria**: `workers_registered > 0` AND `workers_with_heartbeat > 0` AND `workers_stale == 0`
-
-**Implementation References**:
-- Heartbeat calculation: `api/main.py:1230`
-- Status logic: `api/main.py:1232-1240`
-- Stale detection: `infra/queue.py:368`
 
 ---
 
@@ -87,17 +83,17 @@ The system provides two monitoring endpoints:
 2. **Inspect Redis heartbeats manually:**
    ```bash
    # List all heartbeat keys
-   docker exec legal_events_redis redis-cli KEYS "rq:worker:*:heartbeat"
+   docker exec legal_events_redis redis-cli KEYS "worker:heartbeat:*"
    
    # Check specific heartbeat TTL
-   docker exec legal_events_redis redis-cli TTL "rq:worker:worker-name:heartbeat"
+   docker exec legal_events_redis redis-cli TTL "worker:heartbeat:<worker-id>"
    
    # Get heartbeat data
-   docker exec legal_events_redis redis-cli GET "rq:worker:worker-name:heartbeat"
+   docker exec legal_events_redis redis-cli GET "worker:heartbeat:<worker-id>"
    ```
 
 3. **Verify worker heartbeat configuration:**
-   - Check infra/queue.py heartbeat emission (should emit every 30s)
+   - Check worker/main.py heartbeat emission (emits every 10s, TTL 30s)
    - Verify Redis connectivity from worker
 
 4. **Check for worker process crashes:**
@@ -138,7 +134,7 @@ docker compose up -d worker
    ```bash
    curl -X POST http://localhost:8000/v1/workers/cleanup
    ```
-   This removes workers with heartbeats >60s old (api/main.py:1268).
+   This removes workers with heartbeats >60s old.
 
 2. **Check which workers are stale:**
    ```bash
@@ -358,15 +354,15 @@ docker compose logs worker --tail 100 -f
 ### Redis Inspection
 ```bash
 # List all worker heartbeats
-docker exec legal_events_redis redis-cli KEYS "rq:worker:*:heartbeat"
+docker exec legal_events_redis redis-cli KEYS "worker:heartbeat:*"
 
 # Check heartbeat TTL
-docker exec legal_events_redis redis-cli TTL "rq:worker:worker-name:heartbeat"
+docker exec legal_events_redis redis-cli TTL "worker:heartbeat:<worker-id>"
 
 # Get heartbeat value
-docker exec legal_events_redis redis-cli GET "rq:worker:worker-name:heartbeat"
+docker exec legal_events_redis redis-cli GET "worker:heartbeat:<worker-id>"
 
-# List all workers
+# List all workers (RQ native)
 docker exec legal_events_redis redis-cli SMEMBERS "rq:workers"
 ```
 

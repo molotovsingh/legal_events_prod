@@ -1604,7 +1604,7 @@ graph TB
 
 ### Health Check Endpoints
 
-- `GET /health` - Overall system health (basic check, only degrades when `workers_registered == 0`, see api/main.py:172-179)
+- `GET /health` - Overall system health (basic check, only degrades when `workers_registered == 0`)
 - `GET /v1/workers/status` - Detailed worker health with heartbeat-aware liveness detection (recommended for monitoring)
 - `GET /health/database` - Database connectivity
 - `GET /health/storage` - MinIO storage health
@@ -1622,7 +1622,7 @@ graph TB
 - `workers_registered` (int) - Total number of RQ workers registered in Redis
 - `workers_with_heartbeat` (int) - Number of workers with active (non-stale) heartbeats
 - `workers_stale` (int) - Number of workers with stale heartbeats (>60s old)
-- `healthy` (bool) - True ONLY if `workers_registered > 0` AND `workers_with_heartbeat > 0` AND `workers_stale == 0` (api/main.py:1230)
+- `healthy` (bool) - True ONLY if `workers_registered > 0` AND `workers_with_heartbeat > 0` AND `workers_stale == 0`
 - `status` (str) - Overall status: `healthy` | `degraded` | `unhealthy` (error path only)
 - `workers` (array) - Detailed worker information with heartbeat data
 - `queue_depth` (int) - Total jobs queued across all queues
@@ -1630,7 +1630,7 @@ graph TB
 - `queues` (object) - Per-queue statistics (high, default, low)
 - `timestamp` (string) - ISO 8601 timestamp of status check
 
-**Status Determination Logic** (api/main.py:1232-1240):
+**Status Determination Logic**:
 1. `status = "degraded"` if `workers_registered == 0`
 2. `status = "degraded"` if `active_heartbeats == 0` (no workers publishing heartbeats)
 3. `status = "degraded"` if `stale_heartbeats > 0` (some workers have stale heartbeats)
@@ -1643,7 +1643,10 @@ graph TB
 - `heartbeat.hostname` - Worker hostname
 - `heartbeat.pid` - Worker process ID
 
-**Heartbeat Stale Threshold**: 60 seconds (infra/queue.py:368)
+**Heartbeat Timing**:
+- Emit interval: 10 seconds (worker/main.py)
+- TTL: 30 seconds (worker/main.py)
+- Stale threshold: 60 seconds (infra/queue.py)
 
 **Example Response (Healthy)**:
 ```json
