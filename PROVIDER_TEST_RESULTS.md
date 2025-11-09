@@ -100,14 +100,31 @@ Citation: (empty)
 **API Key**: GEMINI_API_KEY (configured)  
 **Error**: `langextract module required`
 
-**Root Cause**: The `langextract` Python package is not installed in the environment.
+**Root Cause**: The `langextract` Python package requires Python 3.10+ but the system has Python 3.9.6.
 
-**Fix Required**:
-```bash
-pip install langextract
-# or
-uv pip install langextract
-```
+**Python Version Incompatibility**:
+- System Python: 3.9.6
+- Required: Python >=3.10
+- All langextract versions (0.1.0 - 1.0.9) require Python 3.10+
+
+**Fix Options**:
+
+1. **Use Docker (Recommended for Production)**:
+   ```bash
+   # Worker container has Python 3.12
+   docker compose exec worker pip install langextract
+   docker compose restart worker
+   ```
+
+2. **Upgrade System Python (Development)**:
+   ```bash
+   brew install python@3.10
+   python3.10 -m venv venv
+   source venv/bin/activate
+   pip install langextract
+   ```
+
+3. **Continue Without LangExtract** (Use 3 working providers)
 
 **Logs**:
 - ✅ API key validated (GEMINI_API_KEY found)
@@ -145,7 +162,7 @@ uv pip install langextract
 ✅ **OpenAI GPT** - 1 event extracted ($0.0037)
 
 ### Failed Providers (1/5)
-❌ **LangExtract (Gemini)** - Module not installed (dependency issue)
+❌ **LangExtract (Gemini)** - Python version incompatibility (requires 3.10+, system has 3.9.6)
 
 ### Skipped Providers (1/5)
 ⏭️ **DeepSeek** - No API key configured
@@ -156,8 +173,19 @@ uv pip install langextract
 
 ### Immediate Actions
 
-1. **Install LangExtract module** to enable Gemini provider:
+1. **Enable LangExtract** (choose one option):
+   
+   **Option A - Use Docker (Recommended)**:
    ```bash
+   docker compose exec worker pip install langextract
+   docker compose restart worker
+   ```
+   
+   **Option B - Upgrade Python**:
+   ```bash
+   brew install python@3.10
+   python3.10 -m venv venv
+   source venv/bin/activate
    pip install langextract
    ```
 
