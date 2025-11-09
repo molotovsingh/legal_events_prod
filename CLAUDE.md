@@ -148,3 +148,83 @@ redis-cli LLEN "rq:queue:failed"
 **Workaround (Current - v0.2.0):**
 - UI dropdown manually updated to show langextract as working option
 - Other providers listed but will error if selected (marked as future work)
+
+---
+
+## Worker Heartbeat Monitoring (v0.9.0)
+
+### Overview
+The system implements production-grade worker health monitoring with heartbeat-based liveness detection, enabling automatic stale worker detection and recovery.
+
+### Key Features
+- **Heartbeat Emission:** Workers emit heartbeats to Redis every 10 seconds
+- **Worker Metadata:** Each heartbeat includes hostname, PID, start time, job statistics
+- **Auto-Expiration:** 30-second TTL with automatic cleanup on worker crash/termination
+- **Stale Detection:** Workers not seen for >60 seconds marked as stale
+- **Health Degradation:** System health reflects worker availability and heartbeat freshness
+
+### Monitoring Endpoints
+- **GET /v1/workers/status** - Enhanced endpoint with heartbeat data
+  - Per-worker liveness status (last_beat, seconds_ago, is_alive)
+  - New metrics: workers_with_heartbeat, workers_stale
+  - Health degradation detection for alerting
+
+### Health Semantics
+- **"healthy":** Workers active AND heartbeats recent (<60s)
+- **"degraded":** Zero workers registered OR any stale heartbeats detected
+- **"unhealthy":** Critical system failures (database/Redis unavailable)
+
+### Operational Impact
+- Enables automatic detection of crashed/hung workers
+- Provides foundation for auto-restart mechanisms
+- Improves operational visibility into worker fleet health
+- Supports horizontal scaling with real-time worker tracking
+
+### What Changed in v0.9.0
+- ✅ Added heartbeat emission to worker startup (infra/worker_lifecycle.py)
+- ✅ Enhanced /v1/workers/status with heartbeat metadata
+- ✅ Implemented stale worker detection (60s threshold)
+- ✅ Added health degradation based on heartbeat freshness
+- ✅ Created OPERATIONS_RUNBOOK.md for troubleshooting
+
+---
+
+## Testing Infrastructure (v0.9.1)
+
+### Overview
+Comprehensive testing infrastructure to validate LLM provider integration and export functionality, ensuring production readiness.
+
+### Test Suites Added
+
+#### 1. Provider Validation (test_providers.py)
+- Tests all 5 configured LLM providers (OpenRouter, Anthropic, OpenAI, LangExtract, DeepSeek)
+- Validates API key configuration and authentication
+- Performs real PDF extraction with quality assessment
+- Reports per-provider costs and success rates
+- **Current Results:** 3/5 providers working (OpenRouter, Anthropic, OpenAI)
+
+#### 2. Export Functionality (test_export_functionality.py)
+- Tests CSV, XLSX, and JSON export generation
+- Validates output structure and content integrity
+- Verifies field mapping and data preservation
+- **Current Results:** All 3 export formats working (100% success)
+
+### Documentation Improvements
+- **OPERATIONS_RUNBOOK.md:** Troubleshooting procedures, monitoring setup, escalation paths
+- **PROVIDER_TEST_RESULTS.md:** Detailed provider validation results (235 lines)
+- **EXPORT_TEST_RESULTS.md:** Export format analysis (245 lines)
+- Enhanced API schemas with comprehensive docstrings
+
+### Bug Fixes
+- Fixed TypeError in provider tests (len(None) prevention)
+- Corrected Redis key patterns in documentation
+- Fixed heartbeat timing documentation (10s/30s/60s semantics)
+- Updated LangExtract failure root cause (Python >=3.10 requirement)
+
+### What Changed in v0.9.1
+- ✅ Added test_providers.py - LLM provider validation suite
+- ✅ Added test_export_functionality.py - Export format validation
+- ✅ Created OPERATIONS_RUNBOOK.md - Comprehensive operations guide
+- ✅ Enhanced error handling in LangExtract with retry logic
+- ✅ Fixed documentation accuracy (Redis keys, timing semantics)
+- ✅ Added CHANGELOG.md - Version history tracking
