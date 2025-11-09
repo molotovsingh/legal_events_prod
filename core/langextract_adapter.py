@@ -25,11 +25,20 @@ class LangExtractEventExtractor:
             config: LangExtractConfig instance with all LangExtract settings
         """
         self.config = config
+        self.init_error = None
         try:
             self.client = LangExtractClient()
             self.available = True
             logger.info("✅ LangExtractEventExtractor initialized")
+        except ValueError as e:
+            # API key missing - store detailed error for user feedback
+            self.init_error = str(e)
+            logger.error(f"❌ LangExtractEventExtractor initialization failed: {e}")
+            logger.error("⚠️ All document extractions will fail until GEMINI_API_KEY is configured")
+            self.client = None
+            self.available = False
         except Exception as e:
+            self.init_error = f"Initialization error: {str(e)}"
             logger.error(f"❌ LangExtractEventExtractor initialization failed: {e}")
             self.client = None
             self.available = False
@@ -51,8 +60,9 @@ class LangExtractEventExtractor:
             document_name = document_name.split("/")[-1]  # Get filename only
 
         if not self.available:
-            logger.warning("⚠️ LangExtractEventExtractor not available - creating fallback record")
-            return [self._create_fallback_record(document_name, "LangExtract client not available")]
+            error_detail = self.init_error if hasattr(self, 'init_error') and self.init_error else "LangExtract client not available"
+            logger.warning(f"⚠️ LangExtractEventExtractor not available - creating fallback record: {error_detail}")
+            return [self._create_fallback_record(document_name, error_detail)]
 
         if not text or not text.strip():
             logger.warning(f"⚠️ No text provided for {document_name} - creating fallback record")

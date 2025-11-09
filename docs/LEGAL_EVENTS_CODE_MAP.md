@@ -1604,10 +1604,90 @@ graph TB
 
 ### Health Check Endpoints
 
-- `GET /health` - Overall system health
+- `GET /health` - Overall system health (basic check, only degrades when `workers_registered == 0`, see api/main.py:172-179)
+- `GET /v1/workers/status` - Detailed worker health with heartbeat-aware liveness detection (recommended for monitoring)
 - `GET /health/database` - Database connectivity
 - `GET /health/storage` - MinIO storage health
 - `GET /health/queue` - Redis queue health
+
+**Note**: The `/health` endpoint's "workers" component currently only checks if workers are registered (`workers_registered > 0`), not if they have active heartbeats. Use `/v1/workers/status` for heartbeat-aware monitoring. Future work may align `/health` with heartbeat liveness semantics.
+
+#### Worker Status Endpoint (Heartbeat-Aware)
+
+**Endpoint**: `GET /v1/workers/status`  
+**Authentication**: Not required  
+**Purpose**: Detailed worker health monitoring with heartbeat liveness detection
+
+**Response Fields**:
+- `workers_registered` (int) - Total number of RQ workers registered in Redis
+- `workers_with_heartbeat` (int) - Number of workers with active (non-stale) heartbeats
+- `workers_stale` (int) - Number of workers with stale heartbeats (>60s old)
+- `healthy` (bool) - True ONLY if `workers_registered > 0` AND `workers_with_heartbeat > 0` AND `workers_stale == 0` (api/main.py:1230)
+- `status` (str) - Overall status: `healthy` | `degraded` | `unhealthy` (error path only)
+- `workers` (array) - Detailed worker information with heartbeat data
+- `queue_depth` (int) - Total jobs queued across all queues
+- `jobs_processing` (int) - Total jobs currently being processed
+- `queues` (object) - Per-queue statistics (high, default, low)
+- `timestamp` (string) - ISO 8601 timestamp of status check
+
+**Status Determination Logic** (api/main.py:1232-1240):
+1. `status = "degraded"` if `workers_registered == 0`
+2. `status = "degraded"` if `active_heartbeats == 0` (no workers publishing heartbeats)
+3. `status = "degraded"` if `stale_heartbeats > 0` (some workers have stale heartbeats)
+4. `status = "healthy"` otherwise
+
+**Heartbeat Details** (per worker in `workers` array):
+- `heartbeat.last_beat` - ISO 8601 timestamp of last heartbeat
+- `heartbeat.seconds_ago` - Seconds since last heartbeat
+- `heartbeat.is_alive` - Boolean indicating if heartbeat is fresh (<60s)
+- `heartbeat.hostname` - Worker hostname
+- `heartbeat.pid` - Worker process ID
+
+**Heartbeat Stale Threshold**: 60 seconds (infra/queue.py:368)
+
+**Example Response (Healthy)**:
+```json
+{
+  "workers_registered": 1,
+  "workers_with_heartbeat": 1,
+  "workers_stale": 0,
+  "workers": [{
+    "name": "legal-events-worker.abc123",
+    "queues": ["high", "default", "low"],
+    "state": "busy",
+    "heartbeat": {
+      "last_beat": "2025-11-09T12:34:56Z",
+      "seconds_ago": 15,
+      "is_alive": true,
+      "hostname": "worker-pod-1",
+      "pid": 42
+    }
+  }],
+  "queue_depth": 5,
+  "jobs_processing": 2,
+  "healthy": true,
+  "status": "healthy",
+  "timestamp": "2025-11-09T12:35:11Z"
+}
+```
+
+**Example Response (Degraded - Zero Active Heartbeats)**:
+```json
+{
+  "workers_registered": 2,
+  "workers_with_heartbeat": 0,
+  "workers_stale": 0,
+  "workers": [
+    {"name": "worker-1", "heartbeat": null},
+    {"name": "worker-2", "heartbeat": null}
+  ],
+  "queue_depth": 10,
+  "jobs_processing": 0,
+  "healthy": false,
+  "status": "degraded",
+  "timestamp": "2025-11-09T12:35:11Z"
+}
+```
 
 ---
 

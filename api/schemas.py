@@ -303,3 +303,64 @@ class HealthStatus(BaseModel):
     status: str  # healthy, degraded, unhealthy
     timestamp: datetime
     components: Dict[str, str]
+
+
+class WorkerHeartbeat(BaseModel):
+    """Worker heartbeat information"""
+    last_beat: str  # ISO 8601 timestamp
+    seconds_ago: int
+    is_alive: bool
+    hostname: Optional[str] = None
+    pid: Optional[int] = None
+
+
+class WorkerInfo(BaseModel):
+    """Individual worker information"""
+    name: str
+    queues: List[str]
+    state: str
+    successful_job_count: int = 0
+    failed_job_count: int = 0
+    heartbeat: Optional[WorkerHeartbeat] = None
+
+
+class QueueStats(BaseModel):
+    """Per-queue statistics"""
+    queued: int = 0
+    started: int = 0
+    finished: int = 0
+    failed: int = 0
+
+
+class WorkerStatusResponse(BaseModel):
+    """
+    Worker status endpoint response with heartbeat-aware liveness detection.
+    
+    Fields:
+        workers_registered: Total number of RQ workers registered in Redis
+        workers_with_heartbeat: Number of workers with active (non-stale) heartbeats
+        workers_stale: Number of workers with stale heartbeats (>60s old)
+        healthy: True ONLY if workers_registered > 0 AND workers_with_heartbeat > 0 AND workers_stale == 0
+        status: Overall status (healthy | degraded | unhealthy)
+        workers: Detailed worker information with heartbeat data
+        queue_depth: Total jobs queued across all queues
+        jobs_processing: Total jobs currently being processed
+        queues: Per-queue statistics (high, default, low)
+        timestamp: ISO 8601 timestamp of status check
+    
+    Status determination logic (api/main.py:1232-1240):
+        - status = "degraded" if workers_registered == 0
+        - status = "degraded" if active_heartbeats == 0
+        - status = "degraded" if stale_heartbeats > 0
+        - status = "healthy" otherwise
+    """
+    workers_registered: int
+    workers_with_heartbeat: int
+    workers_stale: int
+    workers: List[WorkerInfo]
+    queue_depth: int
+    jobs_processing: int
+    queues: Dict[str, QueueStats]
+    healthy: bool
+    status: str  # "healthy" | "degraded" | "unhealthy"
+    timestamp: str  # ISO 8601

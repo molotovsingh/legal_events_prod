@@ -1,7 +1,27 @@
 # System Status
 
-**Last Updated:** 2025-11-05
+**Last Updated:** 2025-11-09
 **Current Phase:** Phase 2 - Testing & Bug Discovery (IN PROGRESS)
+
+---
+
+## 🔄 Recent Changes
+
+### Worker Health Monitoring Enhancement (2025-11-09)
+**Status alignment fix applied** to prevent misleading monitoring/alerting:
+
+- **Before**: `healthy = True` when workers registered, even if all heartbeats expired
+- **After**: `healthy = True` ONLY when workers have active (non-stale) heartbeats
+
+**Changes Applied**:
+- ✅ `api/main.py:1230` - Added `stale_heartbeats == 0` to healthy calculation
+- ✅ `api/main.py:1235-1236` - Added `active_heartbeats == 0` check to status determination
+- ✅ Both `healthy` boolean and `status` string now perfectly aligned
+- ✅ Comprehensive documentation added (OPERATIONS_RUNBOOK.md, API docs, examples)
+
+**Impact**: Monitoring systems will correctly detect degraded state when workers lose heartbeats.
+
+**See**: [docs/OPERATIONS_RUNBOOK.md](docs/OPERATIONS_RUNBOOK.md) for operational procedures
 
 ---
 
@@ -45,6 +65,11 @@
   - [x] RQ Worker deprecated API usage
   - [x] PostgreSQL ENUM creation errors
   - [x] docker-compose.yml error handling
+- [x] Worker heartbeat monitoring with liveness detection
+  - [x] `healthy` boolean aligns with `status` string (P1 fix applied)
+  - [x] Strict health semantics: healthy only when all workers have active heartbeats
+  - [x] Stale heartbeat detection (>60s threshold)
+  - [x] Comprehensive operational documentation added
 - [ ] Test with sample PDFs
   - [ ] famas_dispute/Answer to Request for Arbitration.pdf
   - [ ] amrapali_case/Amrapali Allotment Letter.pdf

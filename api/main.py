@@ -1173,15 +1173,27 @@ async def list_event_providers(
 @app.get("/v1/workers/status")
 async def get_worker_status():
     """
-    Get current worker status and queue metrics.
+    Get current worker status and queue metrics with heartbeat-aware liveness detection.
     
-    Used for health monitoring and alerting. Shows:
+    Returns WorkerStatusResponse with:
     - Number of registered workers
-    - Worker details (names, queues, state)
+    - Active heartbeat count (workers_with_heartbeat)
+    - Stale heartbeat count (workers_stale - >60s old)
+    - Worker details with heartbeat information
     - Queue depths and processing stats
+    - Overall health status (boolean and string)
+    
+    Health semantics (api/main.py:1230):
+        healthy = workers_registered > 0 AND workers_with_heartbeat > 0 AND workers_stale == 0
+    
+    Status determination (api/main.py:1232-1240):
+        - "degraded" if workers_registered == 0
+        - "degraded" if active_heartbeats == 0
+        - "degraded" if stale_heartbeats > 0
+        - "healthy" otherwise
     
     Returns:
-        JSON with worker and queue statistics
+        JSON with worker and queue statistics (see api/schemas.py:WorkerStatusResponse)
     """
     try:
         from infra.queue import get_worker_stats, get_queue_stats, get_worker_heartbeats, cleanup_stale_workers
@@ -1227,10 +1239,12 @@ async def get_worker_status():
         
         # Determine health status
         workers_count = worker_stats.get("total_workers", 0)
-        healthy = workers_count > 0 and active_heartbeats > 0
+        healthy = workers_count > 0 and active_heartbeats > 0 and stale_heartbeats == 0
         
         # Determine overall status
         if workers_count == 0:
+            status = "degraded"
+        elif active_heartbeats == 0:
             status = "degraded"
         elif stale_heartbeats > 0:
             status = "degraded"

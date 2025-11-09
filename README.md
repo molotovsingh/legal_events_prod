@@ -79,6 +79,41 @@ cp .env.example .env
 - API Docs: http://localhost:8000/docs
 - MinIO Console: http://localhost:9001 (minioadmin/minioadmin123)
 
+## 📊 Monitoring Endpoints
+
+The system provides two health monitoring endpoints:
+
+### Basic Health Check
+```bash
+GET /health
+```
+Returns overall system health (database, storage, queue, workers). The "workers" component only checks if workers are registered, not if they have active heartbeats.
+
+**Use for**: Load balancer health checks, basic uptime monitoring
+
+### Detailed Worker Status (Recommended for Monitoring)
+```bash
+GET /v1/workers/status
+```
+Returns detailed worker health with **heartbeat-aware liveness detection**:
+- Active heartbeat count
+- Stale heartbeat detection (>60s)
+- Per-worker heartbeat details (last_beat, is_alive, hostname, pid)
+- Queue depths and processing stats
+
+**Use for**: Production monitoring, alerting, troubleshooting
+
+**Example:**
+```bash
+# Check worker health
+curl http://localhost:8000/v1/workers/status | jq '.healthy, .status'
+
+# Get detailed heartbeat info
+curl http://localhost:8000/v1/workers/status | jq '.workers[].heartbeat'
+```
+
+**See**: [docs/OPERATIONS_RUNBOOK.md](docs/OPERATIONS_RUNBOOK.md) for troubleshooting guide
+
 ## 🔧 Services
 
 This system uses Docker Compose to orchestrate:

@@ -5,6 +5,7 @@ Handles API key loading, shared prompts, and extraction calls
 
 import os
 import logging
+import time
 from typing import Dict, List, Any, Optional
 
 try:
@@ -46,8 +47,10 @@ class LangExtractClient:
         self.api_key = os.getenv('GEMINI_API_KEY') or os.getenv('GOOGLE_API_KEY')
 
         if not self.api_key:
-            logger.error("🚨 GEMINI_API_KEY missing")
-            raise ValueError("GEMINI_API_KEY required for LangExtract operations")
+            logger.error("🚨 GEMINI_API_KEY or GOOGLE_API_KEY not found in environment")
+            logger.error("💡 Solution: Set GEMINI_API_KEY in your .env file (see .env.example line 95-96)")
+            logger.error("📝 Get your key at: https://makersuite.google.com/app/apikey")
+            raise ValueError("GEMINI_API_KEY required for LangExtract operations - please configure in .env file")
 
         logger.info("✅ GEMINI_API_KEY loaded successfully")
 
@@ -75,14 +78,16 @@ class LangExtractClient:
     def extract_with_prompt(self,
                            text: str,
                            prompt_description: str,
-                           custom_examples: Optional[List[Any]] = None) -> Optional[Any]:
+                           custom_examples: Optional[List[Any]] = None,
+                           max_retries: int = 3) -> Optional[Any]:
         """
-        Execute LangExtract with shared configuration
+        Execute LangExtract with shared configuration and retry logic
 
         Args:
             text: Input text to process
             prompt_description: Description of what to extract
             custom_examples: Optional custom examples (uses shared if not provided)
+            max_retries: Maximum number of retry attempts (default: 3)
 
         Returns:
             LangExtract response or None if failed
@@ -91,32 +96,62 @@ class LangExtractClient:
             logger.error("❌ No text provided for extraction")
             return None
 
-        try:
-            examples = custom_examples if custom_examples else self.shared_examples
+        # Validate text length (warn if very large)
+        text_length = len(text)
+        if text_length > 500000:
+            logger.warning(f"⚠️ Very large document ({text_length:,} chars) - may exceed API limits")
+        
+        examples = custom_examples if custom_examples else self.shared_examples
 
-            logger.info(f"🔍 Starting LangExtract call: {prompt_description}")
-            logger.info(f"📝 Text length: {len(text)} chars")
-            logger.info(f"🎯 Examples: {len(examples)}")
+        logger.info(f"🔍 Starting LangExtract call: {prompt_description[:80]}...")
+        logger.info(f"📝 Text length: {text_length:,} chars")
+        logger.info(f"🎯 Examples: {len(examples)}")
 
-            # Execute the real LangExtract API call
-            response = lx.extract(
-                text_or_documents=text,
-                prompt_description=prompt_description,
-                examples=examples,
-                model_id=self.model_id,
-                api_key=self.api_key
-            )
+        # Retry loop with exponential backoff
+        for attempt in range(1, max_retries + 1):
+            try:
+                # Execute the real LangExtract API call
+                response = lx.extract(
+                    text_or_documents=text,
+                    prompt_description=prompt_description,
+                    examples=examples,
+                    model_id=self.model_id,
+                    api_key=self.api_key
+                )
 
-            if not response:
-                logger.error("❌ LangExtract returned empty response")
-                return None
+                if not response:
+                    logger.error(f"❌ LangExtract returned empty response (attempt {attempt}/{max_retries})")
+                    if attempt < max_retries:
+                        time.sleep(2 ** attempt)  # Exponential backoff: 2s, 4s, 8s
+                        continue
+                    return None
 
-            logger.info(f"✅ LangExtract call successful")
-            return response
+                logger.info(f"✅ LangExtract call successful (attempt {attempt})")
+                return response
 
-        except Exception as e:
-            logger.error(f"❌ LangExtract API call failed: {e}")
-            return None
+            except Exception as e:
+                error_type = type(e).__name__
+                error_msg = str(e)
+                logger.error(f"❌ LangExtract API call failed (attempt {attempt}/{max_retries}): {error_type}: {error_msg}")
+                
+                # Log additional context for debugging
+                if "timeout" in error_msg.lower():
+                    logger.error(f"⏱️ Timeout detected - document may be too large or API may be overloaded")
+                elif "rate" in error_msg.lower() or "quota" in error_msg.lower():
+                    logger.error(f"🚫 Rate limit or quota exceeded - consider waiting or upgrading API plan")
+                elif "token" in error_msg.lower() or "context" in error_msg.lower():
+                    logger.error(f"📏 Token/context limit exceeded - document size: {text_length:,} chars")
+                
+                # Retry with exponential backoff if not the last attempt
+                if attempt < max_retries:
+                    backoff_time = 2 ** attempt
+                    logger.info(f"⏳ Retrying in {backoff_time}s...")
+                    time.sleep(backoff_time)
+                else:
+                    logger.error(f"💥 All {max_retries} attempts failed - giving up")
+                    return None
+
+        return None
 
     def is_available(self) -> bool:
         """Check if LangExtract is properly configured"""

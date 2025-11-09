@@ -49,19 +49,43 @@ worker:
 - Reports queue depths (high/default/low)
 - Returns health status (healthy/degraded/unhealthy)
 
-**Example Response**:
+**Example Response** (After Heartbeat Alignment):
 ```json
 {
     "workers_registered": 1,
+    "workers_with_heartbeat": 1,
+    "workers_stale": 0,
     "workers": [{
-        "name": "legal-events-worker",
+        "name": "legal-events-worker.abc123",
         "queues": ["high", "default", "low"],
         "state": "idle",
         "successful_job_count": 5,
-        "failed_job_count": 0
+        "failed_job_count": 0,
+        "heartbeat": {
+            "last_beat": "2025-11-09T12:34:56Z",
+            "seconds_ago": 15,
+            "is_alive": true,
+            "hostname": "docker-desktop",
+            "pid": 1
+        }
     }],
     "queue_depth": 0,
-    "healthy": true
+    "jobs_processing": 0,
+    "healthy": true,
+    "status": "healthy",
+    "timestamp": "2025-11-09T12:35:11Z"
+}
+```
+
+**Example Response (Degraded - Partial Failure)**:
+```json
+{
+    "workers_registered": 2,
+    "workers_with_heartbeat": 1,
+    "workers_stale": 1,
+    "healthy": false,
+    "status": "degraded",
+    "timestamp": "2025-11-09T12:35:11Z"
 }
 ```
 
