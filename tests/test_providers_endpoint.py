@@ -2,7 +2,7 @@
 Providers Endpoint Unit Tests
 
 Tests the unified GET /v1/providers endpoint using FastAPI TestClient (in-process).
-No external server required - tests run against the app directly.
+No external services required - fully isolated with stubs and fixtures.
 
 Tests verify:
 - All fields present in response
@@ -15,40 +15,112 @@ This validates Phase 3 P1 fix: Unified /v1/providers handler
 """
 
 import os
+import sys
 import pytest
 from datetime import datetime
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, Mock
+from typing import Generator
 
-# Set required environment variables BEFORE importing app
-# This prevents RuntimeError during app initialization
-os.environ.setdefault("JWT_SECRET_KEY", "test-secret-key-for-unit-tests")
-os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
-os.environ.setdefault("REDIS_URL", "redis://localhost:6379")
-os.environ.setdefault("MINIO_ACCESS_KEY", "test-minio-access-key")
-os.environ.setdefault("MINIO_SECRET_KEY", "test-minio-secret-key")
-os.environ.setdefault("MINIO_ENDPOINT", "localhost:9000")
-os.environ.setdefault("MINIO_BUCKET", "test-legal-documents")
-os.environ.setdefault("MINIO_SECURE", "false")
 
-# Mock Redis event processor BEFORE importing app
-# Prevents real Redis connection during app lifespan startup
-with patch('api.event_processor.start_event_processor'), \
-     patch('api.event_processor.stop_event_processor'):
+@pytest.fixture(scope="session", autouse=True)
+def setup_test_environment():
+    """
+    Set all required environment variables BEFORE any module imports.
+    Session-scoped and autouse ensures this runs first.
+    """
+    os.environ.setdefault("APP_ENV", "test")
+    os.environ.setdefault("JWT_SECRET_KEY", "test-secret-key-for-unit-tests")
+    os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
+    os.environ.setdefault("REDIS_URL", "redis://localhost:6379")
+    os.environ.setdefault("MINIO_ENDPOINT", "localhost:9000")
+    os.environ.setdefault("MINIO_ACCESS_KEY", "test-minio-access-key")
+    os.environ.setdefault("MINIO_SECRET_KEY", "test-minio-secret-key")
+    os.environ.setdefault("MINIO_BUCKET", "test-legal-documents")
+    os.environ.setdefault("MINIO_SECURE", "false")
+
+
+@pytest.fixture(scope="session")
+def mock_dependencies():
+    """
+    Stub all external service modules BEFORE importing api.main.
+    Prevents import-time connections to Redis, MinIO, etc.
+    """
+    # Stub api.event_processor (Redis event consumer)
+    event_processor_mock = Mock()
+    event_processor_mock.start_event_processor = Mock()
+    event_processor_mock.stop_event_processor = Mock()
+    sys.modules['api.event_processor'] = event_processor_mock
+
+    # Stub infra.queue (Redis RQ connection)
+    # Critical: infra.queue pings Redis at import time
+    queue_mock = Mock()
+    queue_mock.enqueue_job = Mock(return_value="mock-job-id")
+    queue_mock.get_worker_stats = Mock(return_value={"workers": 0, "queued": 0})
+    queue_mock.get_redis_connection = Mock()
+    sys.modules['infra.queue'] = queue_mock
+
+    # Stub infra.storage.MinioStorage
+    # Prevents MinIO connection during storage initialization
+    storage_module = Mock()
+    fake_storage = Mock()
+    fake_storage.ensure_bucket = Mock(return_value=True)
+    fake_storage.upload_file = Mock(return_value="mock-storage-key")
+    fake_storage.get_presigned_url = Mock(return_value="http://mock-url")
+    storage_module.MinioStorage = Mock(return_value=fake_storage)
+    sys.modules['infra.storage'] = storage_module
+
+    yield
+
+    # Cleanup after tests
+    for module in ['api.event_processor', 'infra.queue', 'infra.storage']:
+        if module in sys.modules:
+            del sys.modules[module]
+
+
+@pytest.fixture(scope="session")
+def test_client(setup_test_environment, mock_dependencies):
+    """
+    Create TestClient AFTER all stubs are in place.
+    Import api.main only inside this fixture to ensure mocks are active.
+    """
     from fastapi.testclient import TestClient
-
-    # Import the FastAPI app AFTER setting environment variables and mocks
     from api.main import app
 
-# Create test client (runs in-process, no external server needed)
-client = TestClient(app)
+    # Override database dependency to use in-memory SQLite
+    from infra.database import get_db
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from infra.models import Base
+
+    # Create in-memory SQLite engine
+    test_engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
+    Base.metadata.create_all(bind=test_engine)
+    TestSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
+
+    def override_get_db() -> Generator:
+        """Override get_db to use test database"""
+        try:
+            db = TestSessionLocal()
+            yield db
+        finally:
+            db.close()
+
+    # Override FastAPI dependency
+    app.dependency_overrides[get_db] = override_get_db
+
+    client = TestClient(app)
+    yield client
+
+    # Cleanup
+    app.dependency_overrides.clear()
 
 
 class TestProvidersEndpoint:
     """Test unified /v1/providers endpoint"""
 
-    def test_providers_default_query(self):
+    def test_providers_default_query(self, test_client):
         """GET /v1/providers (default) should return enabled providers only"""
-        response = client.get("/v1/providers")
+        response = test_client.get("/v1/providers")
         assert response.status_code == 200
         data = response.json()
 
@@ -65,9 +137,9 @@ class TestProvidersEndpoint:
         except ValueError:
             pytest.fail(f"Invalid timestamp format: {data['timestamp']}")
 
-    def test_providers_all_fields_present(self):
+    def test_providers_all_fields_present(self, test_client):
         """Each provider should have all required fields"""
-        response = client.get("/v1/providers")
+        response = test_client.get("/v1/providers")
         assert response.status_code == 200
         data = response.json()
 
@@ -88,9 +160,9 @@ class TestProvidersEndpoint:
             for field in required_fields:
                 assert field in provider, f"Missing field '{field}' in provider {provider.get('provider_id')}"
 
-    def test_providers_backward_compatibility(self):
+    def test_providers_backward_compatibility(self, test_client):
         """'name' and 'display_name' should have same value"""
-        response = client.get("/v1/providers")
+        response = test_client.get("/v1/providers")
         assert response.status_code == 200
         data = response.json()
 
@@ -98,9 +170,9 @@ class TestProvidersEndpoint:
             assert provider["name"] == provider["display_name"], \
                 f"Backward compatibility broken: name != display_name for {provider['provider_id']}"
 
-    def test_providers_enabled_filter(self):
+    def test_providers_enabled_filter(self, test_client):
         """enabled=true should only return enabled providers"""
-        response = client.get("/v1/providers?enabled=true")
+        response = test_client.get("/v1/providers?enabled=true")
         assert response.status_code == 200
         data = response.json()
 
@@ -108,17 +180,15 @@ class TestProvidersEndpoint:
             assert provider["enabled"] is True, \
                 f"Provider {provider['provider_id']} should be enabled"
 
-    def test_providers_all_filter(self):
+    def test_providers_all_filter(self, test_client):
         """enabled=false should allow disabled providers in results"""
-        # Get all providers by setting enabled to false or None
-        # Note: This depends on catalog having disabled providers
-        response = client.get("/v1/providers?enabled=false")
+        response = test_client.get("/v1/providers?enabled=false")
         assert response.status_code == 200
         # Just verify it doesn't error - disabled providers may not exist
 
-    def test_providers_recommended_filter(self):
+    def test_providers_recommended_filter(self, test_client):
         """recommended_only=true should only return recommended providers"""
-        response = client.get("/v1/providers?recommended_only=true")
+        response = test_client.get("/v1/providers?recommended_only=true")
         assert response.status_code == 200
         data = response.json()
 
@@ -126,9 +196,9 @@ class TestProvidersEndpoint:
             assert provider["recommended"] is True, \
                 f"Provider {provider['provider_id']} should be recommended"
 
-    def test_providers_combined_filters(self):
+    def test_providers_combined_filters(self, test_client):
         """enabled=true&recommended_only=true should work together"""
-        response = client.get("/v1/providers?enabled=true&recommended_only=true")
+        response = test_client.get("/v1/providers?enabled=true&recommended_only=true")
         assert response.status_code == 200
         data = response.json()
 
@@ -136,13 +206,13 @@ class TestProvidersEndpoint:
             assert provider["enabled"] is True
             assert provider["recommended"] is True
 
-    def test_providers_runtime_validation(self):
+    def test_providers_runtime_validation(self, test_client):
         """is_working field should reflect runtime provider status"""
-        response = client.get("/v1/providers")
+        response = test_client.get("/v1/providers")
         assert response.status_code == 200
         data = response.json()
 
-        # At least one provider should be working in production
+        # At least one provider should be working
         working_providers = [p for p in data["providers"] if p["is_working"]]
         assert len(working_providers) > 0, "No providers are working (is_working=true)"
 
@@ -151,9 +221,9 @@ class TestProvidersEndpoint:
             assert isinstance(provider["is_working"], bool), \
                 f"is_working should be boolean for {provider['provider_id']}"
 
-    def test_providers_field_types(self):
+    def test_providers_field_types(self, test_client):
         """Verify correct data types for all fields"""
-        response = client.get("/v1/providers")
+        response = test_client.get("/v1/providers")
         assert response.status_code == 200
         data = response.json()
 
@@ -176,27 +246,27 @@ class TestProvidersEndpoint:
             # List field
             assert isinstance(provider["models"], list)
 
-    def test_providers_count_accuracy(self):
+    def test_providers_count_accuracy(self, test_client):
         """count field should match actual provider list length"""
-        response = client.get("/v1/providers")
+        response = test_client.get("/v1/providers")
         assert response.status_code == 200
         data = response.json()
 
         assert data["count"] == len(data["providers"]), \
             "count field doesn't match providers list length"
 
-    def test_providers_non_empty(self):
+    def test_providers_non_empty(self, test_client):
         """Should return at least one enabled provider"""
-        response = client.get("/v1/providers?enabled=true")
+        response = test_client.get("/v1/providers?enabled=true")
         assert response.status_code == 200
         data = response.json()
 
         assert data["count"] > 0, "No enabled providers found"
         assert len(data["providers"]) > 0, "Empty providers list"
 
-    def test_providers_supports_runtime_model_field(self):
+    def test_providers_supports_runtime_model_field(self, test_client):
         """Verify supports_runtime_model field exists (was missing in old handler)"""
-        response = client.get("/v1/providers")
+        response = test_client.get("/v1/providers")
         assert response.status_code == 200
         data = response.json()
 
@@ -206,18 +276,18 @@ class TestProvidersEndpoint:
             assert "supports_runtime_model" in provider, \
                 f"Critical field 'supports_runtime_model' missing for {provider['provider_id']}"
 
-    def test_providers_response_structure(self):
+    def test_providers_response_structure(self, test_client):
         """Verify response has correct top-level structure"""
-        response = client.get("/v1/providers")
+        response = test_client.get("/v1/providers")
         assert response.status_code == 200
         data = response.json()
 
         # Should have exactly these three keys
         assert set(data.keys()) == {"providers", "count", "timestamp"}
 
-    def test_providers_error_handling(self):
+    def test_providers_error_handling(self, test_client):
         """Verify error handling for invalid query parameters"""
         # Test with invalid boolean value
-        response = client.get("/v1/providers?enabled=invalid")
+        response = test_client.get("/v1/providers?enabled=invalid")
         # FastAPI should handle validation errors with 422
         assert response.status_code in [200, 422]  # May coerce or reject
