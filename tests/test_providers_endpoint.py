@@ -24,6 +24,11 @@ from unittest.mock import MagicMock
 os.environ.setdefault("JWT_SECRET_KEY", "test-secret-key-for-unit-tests")
 os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379")
+os.environ.setdefault("MINIO_ACCESS_KEY", "test-minio-access-key")
+os.environ.setdefault("MINIO_SECRET_KEY", "test-minio-secret-key")
+os.environ.setdefault("MINIO_ENDPOINT", "localhost:9000")
+os.environ.setdefault("MINIO_BUCKET", "test-legal-documents")
+os.environ.setdefault("MINIO_SECURE", "false")
 
 from fastapi.testclient import TestClient
 
