@@ -126,10 +126,13 @@
 - [x] Worker status error response schema compliance - v0.9.2
 
 **Focused Backlog (Required by Boss):**
-1. [ ] **P1: Unify duplicate /v1/providers handlers** 🔴 CRITICAL
-   - Merge handlers at api/main.py lines 193 and 1129 (different response shapes)
-   - Include `supports_runtime_model` in unified response
-   - Remove duplicate endpoint definition
+1. [x] **P1: Unify duplicate /v1/providers handlers** ✅ COMPLETED (commit c8f78e4)
+   - ✅ Enhanced Handler 1 with all fields from Handler 2
+   - ✅ Deleted Handler 2 (56 lines of dead code removed)
+   - ✅ Added `supports_runtime_model`, `recommended`, `notes`, `documentation_url`
+   - ✅ Created unified ProviderDetail schema with backward compatibility
+   - ✅ Updated documentation to match implementation
+   - ✅ Created comprehensive test suite (13 tests)
 2. [ ] **P0: Add integration tests for export API** 🔴 BLOCKING
    - Test actual endpoint at api/main.py:841, not just serializers
    - Include regeneration path (delete from MinIO, re-request)
