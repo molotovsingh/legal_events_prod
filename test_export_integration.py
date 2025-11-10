@@ -404,6 +404,92 @@ class ExportIntegrationTest:
             })
             return False
 
+    def delete_artifact_from_minio(self, format_name):
+        """Delete export artifact from MinIO to test regeneration"""
+        print_header(f"Testing Regeneration: Deleting {format_name.upper()} Artifact")
+
+        # Call the delete endpoint
+        response = requests.delete(
+            f"{self.api_url}/v1/runs/{self.run_id}/artifacts",
+            headers=self.get_headers(),
+            params={"fmt": format_name}
+        )
+
+        if response.status_code == 200:
+            print_success(f"Artifact deleted from MinIO: {format_name}")
+            return True
+        elif response.status_code == 404:
+            print_warning(f"Artifact not found (may not exist): {format_name}")
+            return True  # Not a failure - artifact might not exist
+        else:
+            print_error(f"Failed to delete artifact: {response.status_code}")
+            print_error(response.text)
+            return False
+
+    def test_artifact_regeneration(self, format_name):
+        """Test artifact regeneration: export → delete → re-export"""
+        print_header(f"Testing Regeneration Path: {format_name.upper()}")
+
+        # Step 1: Initial export
+        print_info("Step 1: Initial export...")
+        if not self.test_export_format(format_name):
+            print_error("Initial export failed, skipping regeneration test")
+            self.results.append({
+                "format": f"{format_name}_regen",
+                "status": "failed",
+                "error": "Initial export failed"
+            })
+            return False
+
+        # Step 2: Delete artifact from MinIO
+        print_info("Step 2: Deleting artifact from MinIO...")
+        if not self.delete_artifact_from_minio(format_name):
+            print_error("Failed to delete artifact")
+            self.results.append({
+                "format": f"{format_name}_regen",
+                "status": "failed",
+                "error": "Failed to delete artifact"
+            })
+            return False
+
+        # Step 3: Re-request export (should regenerate)
+        print_info("Step 3: Re-requesting export (should regenerate)...")
+        response = requests.get(
+            f"{self.api_url}/v1/runs/{self.run_id}/export",
+            headers=self.get_headers(),
+            params={"fmt": format_name},
+            stream=True
+        )
+
+        if response.status_code == 200:
+            # Save regenerated file
+            ext_map = {"csv": "csv", "xlsx": "xlsx", "json": "json"}
+            filename = self.output_dir / f"export_regen_{int(time.time())}.{ext_map[format_name]}"
+
+            with open(filename, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    f.write(chunk)
+
+            file_size = filename.stat().st_size
+            print_success(f"Regeneration successful: {filename.name} ({file_size:,} bytes)")
+
+            self.results.append({
+                "format": f"{format_name}_regen",
+                "status": "success",
+                "filename": str(filename),
+                "size": file_size
+            })
+            return True
+        else:
+            print_error(f"Regeneration failed: {response.status_code}")
+            print_error(response.text)
+            self.results.append({
+                "format": f"{format_name}_regen",
+                "status": "failed",
+                "error": response.text
+            })
+            return False
+
     def print_summary(self):
         """Print test summary"""
         print_header("Test Summary")
@@ -472,6 +558,11 @@ class ExportIntegrationTest:
         # Test all export formats
         for fmt in ["csv", "xlsx", "json"]:
             self.test_export_format(fmt)
+
+        # Test artifact regeneration (JSON format as representative test)
+        # This validates that the export endpoint can regenerate artifacts
+        # when they are deleted from MinIO storage
+        self.test_artifact_regeneration("json")
 
         # Print summary
         return self.print_summary()

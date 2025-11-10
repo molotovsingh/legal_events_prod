@@ -1017,6 +1017,50 @@ async def export_run(
     )
 
 
+@app.delete("/v1/runs/{run_id}/artifacts")
+async def delete_artifact(
+    run_id: int,
+    fmt: str = "json",
+    db: Session = Depends(get_db)
+):
+    """
+    Delete export artifact from MinIO storage (for testing regeneration)
+
+    This endpoint deletes only the storage object, keeping the database record.
+    This allows testing the regeneration path where the export endpoint detects
+    a missing artifact and regenerates it from the events table.
+
+    Use case: Integration testing of artifact regeneration logic
+    """
+    if fmt not in ["csv", "xlsx", "json"]:
+        raise HTTPException(status_code=400, detail="Format must be csv, xlsx, or json")
+
+    # Find artifact record
+    artifact = db.query(Artifact).filter(
+        Artifact.run_id == run_id,
+        Artifact.kind == fmt
+    ).first()
+
+    if not artifact:
+        raise HTTPException(status_code=404, detail=f"No {fmt} artifact found for run {run_id}")
+
+    # Delete from MinIO storage only (keep DB record for regeneration testing)
+    storage = MinioStorage()
+    deleted = storage.delete_object(artifact.storage_key)
+
+    if deleted:
+        logger.info(f"Deleted artifact from storage: {artifact.storage_key}")
+        return {
+            "status": "deleted",
+            "storage_key": artifact.storage_key,
+            "format": fmt,
+            "message": "Artifact deleted from storage (database record preserved for regeneration testing)"
+        }
+    else:
+        logger.warning(f"Artifact not found in storage: {artifact.storage_key}")
+        raise HTTPException(status_code=404, detail="Artifact not found in storage")
+
+
 # ============================================================================
 # SSE Endpoint for Progress Streaming
 # ============================================================================

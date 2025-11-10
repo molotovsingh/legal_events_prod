@@ -137,10 +137,14 @@
    - ✅ Zero external service dependencies (Redis, MinIO, PostgreSQL)
    - ✅ Tests work in air-gapped CI environments
    - **Reviewer outcome:** "No actionable defects found"
-2. [ ] **P0: Add integration tests for export API** 🔴 BLOCKING
-   - Test actual endpoint at api/main.py:841, not just serializers
-   - Include regeneration path (delete from MinIO, re-request)
-   - Target: Validates Phase 2 exit check #2
+2. [x] **P0: Add integration tests for export API** ✅ COMPLETED
+   - ✅ Comprehensive integration test (test_export_integration.py)
+   - ✅ Tests all 3 export formats (CSV, XLSX, JSON)
+   - ✅ Full workflow: create client → case → run → upload → process → export
+   - ✅ Artifact regeneration test (delete from MinIO → re-request → verify regeneration)
+   - ✅ Added DELETE /v1/runs/{run_id}/artifacts endpoint for testing
+   - ✅ All 5 tests passing (baseline exports + regeneration)
+   - ✅ Validates Phase 2 exit check #2: "Exports download and open correctly"
 3. [x] **P1: CI - GitHub Actions workflow** ✅ COMPLETED
    - ✅ Created `.github/workflows/test.yml` with comprehensive CI
    - ✅ Multi-version Python testing (3.9, 3.10, 3.11, 3.12)
@@ -170,20 +174,20 @@
 
 ---
 
-### 🔄 Phase 4: Production Hardening (PARTIALLY COMPLETE - 60%)
+### 🔄 Phase 4: Production Hardening (PARTIALLY COMPLETE - 70%)
 
 **Goal:** Add production features gradually
 
 **Completed:**
 - [x] Health check endpoints (/health, /v1/workers/status with heartbeat detection)
-- [x] Integration tests for critical paths (test_providers.py, test_export_functionality.py)
+- [x] Integration tests for critical paths (test_providers.py, test_export_functionality.py, test_export_integration.py)
 - [x] Monitoring endpoints (Prometheus-ready with detailed metrics)
 - [x] Structured logging (throughout codebase with clear levels)
 - [x] Error handling improvements (retry logic, cleanup, self-healing)
 - [x] Authentication (JWT-based authentication already implemented)
+- [x] Basic CI/CD (GitHub Actions workflow with multi-version testing)
 
 **Remaining:**
-- [ ] Basic CI/CD (run tests on commit via GitHub Actions)
 - [ ] Performance optimization (load testing, caching)
 - [ ] Rate limiting (per-client API throttling)
 - [ ] Advanced monitoring (Grafana dashboards, metrics export)

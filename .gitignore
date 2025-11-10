@@ -91,6 +91,8 @@ Desktop.ini
 # Project specific
 notes/
 scratch/
+test_results/
+.tmp.driveupload/
 
 # Node/npm cache
 .npm-cache/
