@@ -13,6 +13,7 @@ import logging
 import os
 from datetime import datetime
 import json
+import uuid
 from contextlib import asynccontextmanager
 
 # Local imports (we'll create these next)
@@ -260,8 +261,12 @@ async def list_providers(
             "timestamp": datetime.utcnow().isoformat()
         }
     except Exception as e:
-        logger.error(f"Error listing providers: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to load providers: {str(e)}")
+        correlation_id = str(uuid.uuid4())[:8]
+        logger.error(f"Error listing providers (correlation_id: {correlation_id}): {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal server error. Please contact support with reference: {correlation_id}"
+        )
 
 
 # ============================================================================
@@ -994,8 +999,13 @@ async def retry_run(
         
     except Exception as e:
         db.rollback()
-        logger.error(f"Failed to retry run {run_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to retry run: {str(e)}")
+        import uuid
+        correlation_id = str(uuid.uuid4())[:8]
+        logger.error(f"Failed to retry run {run_id} (correlation_id: {correlation_id}): {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to retry run. Please contact support with reference: {correlation_id}"
+        )
 
 
 @app.get("/v1/runs/{run_id}/export")
@@ -1467,8 +1477,12 @@ async def cleanup_stale_workers_endpoint(current_user: dict = Depends(get_curren
             "timestamp": datetime.utcnow().isoformat()
         }
     except Exception as e:
-        logger.error(f"Error cleaning up stale workers: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to cleanup workers: {str(e)}")
+        correlation_id = str(uuid.uuid4())[:8]
+        logger.error(f"Error cleaning up stale workers (correlation_id: {correlation_id}): {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Worker cleanup failed. Please contact support with reference: {correlation_id}"
+        )
 
 
 if __name__ == "__main__":

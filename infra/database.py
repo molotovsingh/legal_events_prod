@@ -70,12 +70,59 @@ def populate_initial_data():
     try:
         from infra.models import ModelCatalog, User, UserRole
 
-        # Check if we already have data
+        # FIRST: Always handle admin user provisioning (regardless of existing data)
+        admin_email = os.getenv("ADMIN_EMAIL")
+        admin_password_hash = os.getenv("ADMIN_PASSWORD_HASH")
+        admin_name = os.getenv("ADMIN_NAME", "System Administrator")
+
+        if admin_email and admin_password_hash:
+            # Check if admin user already exists
+            existing_admin = db.query(User).filter(User.email == admin_email).first()
+            if not existing_admin:
+                admin_user = User(
+                    email=admin_email,
+                    name=admin_name,
+                    role=UserRole.ADMIN,
+                    password_hash=admin_password_hash
+                )
+                db.add(admin_user)
+                logger.info(f"✅ Admin user created from environment: {admin_email}")
+            else:
+                logger.info(f"Admin user already exists: {admin_email}")
+        else:
+            # Check environment and enforce security
+            env_mode = os.getenv("ENVIRONMENT", "development").lower()
+            if env_mode in ["production", "staging"]:
+                logger.error("❌ SECURITY ERROR: Admin credentials not configured!")
+                logger.error("Set ADMIN_EMAIL and ADMIN_PASSWORD_HASH environment variables")
+                logger.error("Generate password hash with: python -c \"import bcrypt; print(bcrypt.hashpw(b'password', bcrypt.gensalt()).decode())\"")
+                raise RuntimeError("Admin credentials must be configured in production/staging environments")
+            else:
+                # Development mode - create minimal test user (not admin)
+                logger.warning("⚠️ No admin configured - running in development mode")
+                logger.warning("For admin access, set ADMIN_EMAIL and ADMIN_PASSWORD_HASH")
+
+                # Only create a development reviewer user if no users exist
+                if db.query(User).count() == 0:
+                    dev_user = User(
+                        email="dev@localhost",
+                        name="Development User",
+                        role=UserRole.REVIEWER,
+                        # This is a bcrypt hash for "devpass123" - ONLY for development
+                        password_hash="$2b$12$R5.VmZzYh0x.UqpEEl86OeLzBsT.blHm0M85OpQ9kT3lPPZhAVgCi"
+                    )
+                    db.add(dev_user)
+                    logger.info("✅ Development user created: dev@localhost (password: devpass123)")
+
+        # SECOND: Check if we need to populate model catalog
         if db.query(ModelCatalog).count() > 0:
-            logger.info("Database already has data, skipping initial population")
+            logger.info("Model catalog already populated, skipping model seeding")
+            db.commit()
+            logger.info("✅ Admin provisioning completed")
             return
 
-        # Add default models to catalog
+        # Add default models to catalog (only if empty)
+        logger.info("Populating model catalog with default models...")
         default_models = [
             {
                 "provider": "openrouter",
@@ -131,52 +178,8 @@ def populate_initial_data():
             model = ModelCatalog(**model_data)
             db.add(model)
 
-        # Create admin user from environment variables (secure provisioning)
-        admin_email = os.getenv("ADMIN_EMAIL")
-        admin_password_hash = os.getenv("ADMIN_PASSWORD_HASH")
-        admin_name = os.getenv("ADMIN_NAME", "System Administrator")
-
-        if admin_email and admin_password_hash:
-            # Check if admin user already exists
-            existing_admin = db.query(User).filter(User.email == admin_email).first()
-            if not existing_admin:
-                admin_user = User(
-                    email=admin_email,
-                    name=admin_name,
-                    role=UserRole.ADMIN,
-                    password_hash=admin_password_hash
-                )
-                db.add(admin_user)
-                logger.info(f"✅ Admin user created from environment: {admin_email}")
-            else:
-                logger.info(f"Admin user already exists: {admin_email}")
-        else:
-            # Check environment and enforce security
-            env_mode = os.getenv("ENVIRONMENT", "development").lower()
-            if env_mode in ["production", "staging"]:
-                logger.error("❌ SECURITY ERROR: Admin credentials not configured!")
-                logger.error("Set ADMIN_EMAIL and ADMIN_PASSWORD_HASH environment variables")
-                logger.error("Generate password hash with: python -c \"import bcrypt; print(bcrypt.hashpw(b'password', bcrypt.gensalt()).decode())\"")
-                raise RuntimeError("Admin credentials must be configured in production/staging environments")
-            else:
-                # Development mode - create minimal test user (not admin)
-                logger.warning("⚠️ No admin configured - running in development mode")
-                logger.warning("For admin access, set ADMIN_EMAIL and ADMIN_PASSWORD_HASH")
-
-                # Only create a development reviewer user if no users exist
-                if db.query(User).count() == 0:
-                    dev_user = User(
-                        email="dev@localhost",
-                        name="Development User",
-                        role=UserRole.REVIEWER,
-                        # This is a bcrypt hash for "devpass123" - ONLY for development
-                        password_hash="$2b$12$R5.VmZzYh0x.UqpEEl86OeLzBsT.blHm0M85OpQ9kT3lPPZhAVgCi"
-                    )
-                    db.add(dev_user)
-                    logger.info("✅ Development user created: dev@localhost (password: devpass123)")
-
         db.commit()
-        logger.info("✅ Initial data populated")
+        logger.info("✅ Initial data populated (models and admin)")
 
     except Exception as e:
         logger.error(f"Failed to populate initial data: {e}")
