@@ -166,9 +166,12 @@
    - **Decision:** Not using DeepSeek for the moment
    - Existing providers (OpenRouter, Anthropic, OpenAI, LangExtract) are sufficient
    - Can be revisited in future if needed
-6. [ ] **P2: Documentation polish** 🟢 MEDIUM (MOSTLY DONE)
+6. [x] **P2: Documentation polish** ✅ COMPLETED
    - ✅ Brittle line refs already removed (v0.9.1)
-   - Finalize provider/model documentation
+   - ✅ API documentation updated with new endpoints (GET /v1/runs, DELETE /v1/runs/{run_id}/artifacts)
+   - ✅ Provider status documentation added with current implementation status
+   - ✅ README updated to reflect Phase 3 progress (83% complete)
+   - ✅ LEGAL_EVENTS_CODE_MAP.md updated to v2.1 with comprehensive coverage
 
 **Timeline:** Flexible, no pressure
 

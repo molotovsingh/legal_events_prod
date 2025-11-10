@@ -419,6 +419,47 @@ Start processing a run.
 }
 ```
 
+#### GET /v1/runs
+List runs with filtering and pagination.
+
+**Query Parameters:**
+- `client_id` (int): Filter by client ID
+- `case_id` (int): Filter by case ID
+- `status` (string): Filter by status (queued, processing, success, failed, partial)
+- `limit` (int): Results per page (default: 20, max: 100)
+- `offset` (int): Number to skip for pagination (default: 0)
+- `order_by` (string): Sort field (created_at, finished_at, status; default: created_at)
+- `order` (string): Sort direction (asc, desc; default: desc)
+
+**Response:**
+```json
+{
+  "runs": [
+    {
+      "run_id": 1,
+      "case_id": 1,
+      "status": "success",
+      "provider": "openrouter",
+      "model": "meta-llama/llama-3.3-70b-instruct",
+      "created_at": "2025-11-10T06:00:00Z",
+      "started_at": "2025-11-10T06:01:00Z",
+      "finished_at": "2025-11-10T06:05:00Z",
+      "counts": {"total": 2, "processed": 2, "failed": 0, "pending": 0},
+      "timings": {"total_seconds": 240.5},
+      "cost_usd": 0.25,
+      "error": null
+    }
+  ],
+  "pagination": {
+    "total": 50,
+    "limit": 20,
+    "offset": 0,
+    "has_next": true,
+    "has_prev": false
+  }
+}
+```
+
 #### GET /v1/runs/{run_id}
 Get run details and progress.
 
@@ -500,6 +541,31 @@ Generate and download export files.
 - `fmt` (string): Format (csv, xlsx, json)
 
 **Response:** File download with appropriate content-type
+
+#### DELETE /v1/runs/{run_id}/artifacts
+Delete export artifact from MinIO storage (for testing regeneration).
+
+**Headers:**
+- `Authorization: Bearer <token>` (required)
+
+**Query Parameters:**
+- `fmt` (string): Format to delete (csv, xlsx, json; default: json)
+
+**Response:**
+```json
+{
+  "status": "deleted",
+  "storage_key": "clients/1/cases/1/runs/1/artifacts/events_export.json",
+  "format": "json",
+  "message": "Artifact deleted from storage (database record preserved for regeneration testing)"
+}
+```
+
+**Notes:**
+- Requires authentication (JWT token)
+- Deletes storage object only, preserves database record
+- Used for testing artifact regeneration logic
+- Returns 404 if artifact not found
 
 #### PUT /v1/runs/{run_id}/retry
 Retry a failed or stuck run.
@@ -1784,6 +1850,36 @@ curl -H "Authorization: Bearer $OPENROUTER_API_KEY" \
 
 ---
 
+## 🤖 LLM Provider Implementation Status
+
+### Current Provider Status (Phase 3)
+
+| Provider | Status | API Key Required | Test Results | Notes |
+|----------|--------|-----------------|--------------|--------|
+| **OpenRouter** | ✅ Working | `OPENROUTER_API_KEY` | 2 events extracted | Unified access to multiple models |
+| **Anthropic** | ✅ Working | `ANTHROPIC_API_KEY` | 1 event, $0.0006/doc | Claude models only |
+| **OpenAI** | ✅ Working | `OPENAI_API_KEY` | 1 event, $0.0037/doc | GPT models |
+| **LangExtract** | ⚠️ Python Version | `GEMINI_API_KEY` | Requires Python 3.10+ | System has 3.9.6 |
+| **DeepSeek** | ⏸️ Deferred | `DEEPSEEK_API_KEY` | Not configured | Not using for now |
+
+### Provider Configuration
+
+Providers are defined in `core/event_extractor_catalog.py` and loaded dynamically via `core/extractor_factory.py`. The `/v1/providers` endpoint provides runtime status including:
+
+- **enabled**: Provider is configured in catalog
+- **is_working**: Provider successfully loaded in registry (runtime validation)
+- **supports_runtime_model**: Provider allows model selection at query time
+- **recommended**: Whether provider should be highlighted in UI
+
+### Adding New Providers
+
+1. Create adapter class in `core/<provider>_adapter.py`
+2. Add to catalog in `core/event_extractor_catalog.py`
+3. Set API key environment variable
+4. Test with `test_providers.py`
+
+---
+
 ## 🔐 Security Considerations
 
 ### Authentication & Authorization
@@ -1813,9 +1909,9 @@ For technical support or questions about this code map:
 
 ---
 
-**Document Version**: 1.0  
-**Last Updated**: November 9, 2025  
-**Next Review**: Phase 2 Completion (TBD)
+**Document Version**: 2.1
+**Last Updated**: November 10, 2025
+**Next Review**: Phase 3 Completion
 
 ---
 
