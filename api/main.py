@@ -1021,7 +1021,8 @@ async def export_run(
 async def delete_artifact(
     run_id: int,
     fmt: str = "json",
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_auth)  # Enforce authentication for destructive operations
 ):
     """
     Delete export artifact from MinIO storage (for testing regeneration)
@@ -1031,6 +1032,8 @@ async def delete_artifact(
     a missing artifact and regenerates it from the events table.
 
     Use case: Integration testing of artifact regeneration logic
+
+    **Requires authentication** - Only authenticated users can delete artifacts.
     """
     if fmt not in ["csv", "xlsx", "json"]:
         raise HTTPException(status_code=400, detail="Format must be csv, xlsx, or json")
@@ -1049,7 +1052,7 @@ async def delete_artifact(
     deleted = storage.delete_object(artifact.storage_key)
 
     if deleted:
-        logger.info(f"Deleted artifact from storage: {artifact.storage_key}")
+        logger.info(f"Deleted artifact from storage: {artifact.storage_key} by user {current_user.email}")
         return {
             "status": "deleted",
             "storage_key": artifact.storage_key,
