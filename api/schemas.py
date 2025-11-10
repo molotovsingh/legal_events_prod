@@ -234,16 +234,30 @@ class ModelInfo(BaseModel):
 # Provider Schemas
 # ============================================================================
 
-class ProviderInfo(BaseModel):
+class ProviderDetail(BaseModel):
+    """Unified provider metadata (combines Handler 1 and Handler 2 fields)"""
     provider_id: str
-    name: str
+    display_name: str  # Canonical field name
+    name: str  # Backward compatibility alias (same as display_name)
     enabled: bool
-    models: List[str]
-    is_working: bool
+    supports_runtime_model: bool
+    recommended: bool
+    notes: str
+    documentation_url: Optional[str]
+    is_working: bool  # Runtime validation (provider loaded in registry)
+    models: List[str] = []  # Future: populate from model catalog
 
 
-class ProvidersListResponse(BaseModel):
-    providers: List[ProviderInfo]
+class ProvidersResponse(BaseModel):
+    """Unified provider list response with metadata"""
+    providers: List[ProviderDetail]
+    count: int
+    timestamp: str
+
+
+# Backward compatibility alias
+ProviderInfo = ProviderDetail
+ProvidersListResponse = ProvidersResponse
 
 
 # ============================================================================

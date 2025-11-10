@@ -232,7 +232,7 @@ def schedule_job(
         if func_name == "cleanup_old_runs":
             job = queue.enqueue_at(
                 datetime.utcnow() + timedelta(seconds=delay_seconds),
-                "worker.tasks.cleanup_old_runs",
+                "worker.tasks_refactored.cleanup_old_runs",
                 **kwargs
             )
         else:

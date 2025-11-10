@@ -550,11 +550,13 @@ List available models with pricing and capabilities.
 ```
 
 #### GET /v1/providers
-List available event extraction providers.
+List available event extraction providers (Unified API).
+
+Provides dynamic provider discovery with complete metadata including runtime status, capabilities, and documentation links.
 
 **Query Parameters:**
-- `enabled` (boolean): Filter to enabled providers
-- `recommended_only` (boolean): Only recommended providers
+- `enabled` (boolean, default: true): Filter to enabled providers only
+- `recommended_only` (boolean, optional): Only return recommended providers
 
 **Response:**
 ```json
@@ -562,18 +564,33 @@ List available event extraction providers.
   "providers": [
     {
       "provider_id": "langextract",
-      "display_name": "Gemini (LangExtract)",
+      "display_name": "Gemini",
+      "name": "Gemini",
       "enabled": true,
       "supports_runtime_model": true,
       "recommended": true,
-      "notes": "Google's structured extraction service",
-      "documentation_url": "https://ai.google.dev/"
+      "notes": "Google Gemini 2.0 Flash. Default provider. Fast, accurate, budget-friendly.",
+      "documentation_url": "https://ai.google.dev/gemini-api/docs",
+      "is_working": true,
+      "models": []
     }
   ],
-  "count": 8,
-  "timestamp": "2025-11-09T07:30:00Z"
+  "count": 5,
+  "timestamp": "2025-11-10T12:00:00.000000"
 }
 ```
+
+**Field Descriptions:**
+- `provider_id`: Unique identifier (e.g., 'langextract', 'openrouter')
+- `display_name`: Canonical user-friendly name for UI
+- `name`: Backward compatibility alias (same as display_name)
+- `enabled`: Whether provider is configured in catalog
+- `supports_runtime_model`: Whether provider supports model selection at query time
+- `recommended`: Whether this provider is recommended in UI
+- `notes`: Additional information about the provider
+- `documentation_url`: Link to provider documentation (optional)
+- `is_working`: Runtime validation (true if provider successfully loaded in registry)
+- `models`: Available models (future: will be populated from model catalog)
 
 ### Health & Status
 

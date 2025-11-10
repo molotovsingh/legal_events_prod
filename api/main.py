@@ -5,7 +5,7 @@ Main application entry point with all API routes
 
 from fastapi import FastAPI, Depends, HTTPException, File, UploadFile, BackgroundTasks, Header, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from typing import List, Optional, Dict, Any
@@ -25,7 +25,7 @@ from infra.queue import enqueue_job
 from core.constants import FIVE_COLUMN_HEADERS
 from core.event_extractor_catalog import get_event_extractor_catalog
 # ✅ Authentication enabled - requires valid JWT Bearer token
-from .auth import get_current_user, create_access_token, require_auth
+from .auth import get_current_user, require_auth
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -190,50 +190,78 @@ async def health_check(db: Session = Depends(get_db)):
     }
 
 
-@app.get("/v1/providers", response_model=ProvidersListResponse)
-async def list_providers(enabled: bool = True):
+@app.get("/v1/providers", response_model=ProvidersResponse)
+async def list_providers(
+    enabled: bool = True,
+    recommended_only: Optional[bool] = None
+):
     """
-    List available event extraction providers
+    List available event extraction providers (Unified API)
 
-    This endpoint returns the current state of all event extraction providers,
-    including whether they are enabled in the catalog and whether they are
-    working (successfully registered in the runtime registry).
+    Provides dynamic provider discovery with complete metadata including
+    runtime status, capabilities, and documentation links.
 
     Query params:
-    - enabled: Filter to only enabled providers (default: true)
+    - enabled: Filter to enabled providers only (default: true)
+    - recommended_only: Only return recommended providers if true
 
     Returns:
     {
         "providers": [
             {
                 "provider_id": "langextract",
-                "name": "Gemini (LangExtract)",
+                "display_name": "Gemini",
+                "name": "Gemini",
                 "enabled": true,
-                "models": ["gemini-1.5-flash", "gemini-2.5-flash"],
-                "is_working": true
+                "supports_runtime_model": true,
+                "recommended": true,
+                "notes": "Google Gemini 2.0 Flash...",
+                "documentation_url": "https://ai.google.dev/gemini-api/docs",
+                "is_working": true,
+                "models": []
             },
             ...
-        ]
+        ],
+        "count": 5,
+        "timestamp": "2025-11-10T12:00:00.000000"
     }
     """
-    from core.event_extractor_catalog import get_event_extractor_catalog
-    from core.extractor_factory import EVENT_PROVIDER_REGISTRY
+    try:
+        from core.event_extractor_catalog import get_event_extractor_catalog
+        from core.extractor_factory import EVENT_PROVIDER_REGISTRY
 
-    catalog = get_event_extractor_catalog()
-    providers_list = []
+        catalog = get_event_extractor_catalog()
 
-    for entry in catalog.list_extractors(enabled=enabled):
-        # Note: Model list would require querying each provider's available models
-        # For now, return empty list - models are provider-specific
-        providers_list.append({
-            "provider_id": entry.provider_id,
-            "name": entry.display_name,
-            "enabled": entry.enabled,
-            "models": [],  # TODO: Fetch from provider-specific model catalog
-            "is_working": entry.provider_id in EVENT_PROVIDER_REGISTRY
-        })
+        # Get providers with filters
+        extractors = catalog.list_extractors(
+            enabled=enabled,
+            recommended_only=recommended_only or False
+        )
 
-    return {"providers": providers_list}
+        providers = [
+            {
+                "provider_id": e.provider_id,
+                "display_name": e.display_name,
+                "name": e.display_name,  # Backward compatibility alias
+                "enabled": e.enabled,
+                "supports_runtime_model": e.supports_runtime_model,
+                "recommended": e.recommended,
+                "notes": e.notes,
+                "documentation_url": e.documentation_url,
+                "is_working": e.provider_id in EVENT_PROVIDER_REGISTRY,  # Runtime validation
+                "models": []  # Future: populate from model catalog
+            }
+            for e in extractors
+        ]
+
+        return {
+            "providers": providers,
+            "count": len(providers),
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Error listing providers: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to load providers: {str(e)}")
 
 
 # ============================================================================
@@ -1124,63 +1152,6 @@ async def list_models(
             for m in models
         ]
     }
-
-
-@app.get("/v1/providers")
-async def list_event_providers(
-    enabled: Optional[bool] = None,
-    recommended_only: Optional[bool] = None
-):
-    """
-    List available event extraction providers (Layer 2)
-
-    Provides dynamic provider discovery, allowing clients to query which LLM providers
-    are available and properly configured for event extraction.
-
-    Args:
-        enabled: Filter by enabled status (True=enabled only, False=disabled only, None=all)
-        recommended_only: Only return recommended providers if True
-
-    Returns:
-        JSON with list of provider metadata including:
-        - provider_id: Unique identifier (e.g., 'openai', 'anthropic')
-        - display_name: User-friendly name for UI
-        - enabled: Whether provider is available for use
-        - supports_runtime_model: If provider supports model selection at query time
-        - recommended: Whether this provider is recommended in UI
-        - notes: Additional information about the provider
-        - documentation_url: Link to provider documentation
-    """
-    try:
-        catalog = get_event_extractor_catalog()
-
-        # Get providers with filters
-        extractors = catalog.list_extractors(
-            enabled=enabled,
-            recommended_only=recommended_only or False
-        )
-
-        providers = [
-            {
-                "provider_id": e.provider_id,
-                "display_name": e.display_name,
-                "enabled": e.enabled,
-                "supports_runtime_model": e.supports_runtime_model,
-                "recommended": e.recommended,
-                "notes": e.notes,
-                "documentation_url": e.documentation_url
-            }
-            for e in extractors
-        ]
-
-        return {
-            "providers": providers,
-            "count": len(providers),
-            "timestamp": datetime.utcnow().isoformat()
-        }
-    except Exception as e:
-        logger.error(f"Error listing providers: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to load providers: {str(e)}")
 
 
 @app.get("/v1/workers/status", response_model=WorkerStatusResponse)
