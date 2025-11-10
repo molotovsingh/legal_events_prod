@@ -151,6 +151,21 @@ class RunResponse(BaseModel):
     error: Optional[str]
 
 
+class PaginationMetadata(BaseModel):
+    """Pagination metadata for list endpoints"""
+    total: int = Field(..., description="Total number of items matching the query")
+    limit: int = Field(..., description="Number of items per page")
+    offset: int = Field(..., description="Number of items skipped")
+    has_next: bool = Field(..., description="Whether there are more items after this page")
+    has_prev: bool = Field(..., description="Whether there are items before this page")
+
+
+class RunListResponse(BaseModel):
+    """Response schema for GET /v1/runs endpoint"""
+    runs: List[RunResponse]
+    pagination: PaginationMetadata
+
+
 # ============================================================================
 # Document Schemas
 # ============================================================================

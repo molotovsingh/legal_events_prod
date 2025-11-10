@@ -458,6 +458,137 @@ current_user: User = Depends(get_current_user)  # Optional auth for testing
     }
 
 
+@app.get("/v1/runs", response_model=RunListResponse)
+async def list_runs(
+    client_id: Optional[int] = Query(None, description="Filter by client ID"),
+    case_id: Optional[int] = Query(None, description="Filter by case ID"),
+    status: Optional[str] = Query(None, description="Filter by status (queued, processing, success, failed, partial)"),
+    limit: int = Query(20, ge=1, le=100, description="Number of results per page (max 100)"),
+    offset: int = Query(0, ge=0, description="Number of results to skip for pagination"),
+    order_by: str = Query("created_at", description="Field to sort by (created_at, finished_at, status)"),
+    order: str = Query("desc", description="Sort direction (asc or desc)"),
+    db: Session = Depends(get_db)
+):
+    """
+    List runs with filtering and pagination.
+
+    This endpoint provides efficient access to runs without the N+1 query problem
+    of fetching clients → cases → runs separately.
+
+    Filtering:
+    - client_id: Show only runs for a specific client
+    - case_id: Show only runs for a specific case
+    - status: Show only runs with a specific status
+
+    Pagination:
+    - limit: Results per page (1-100, default 20)
+    - offset: Number of results to skip (for pagination)
+
+    Sorting:
+    - order_by: Field to sort by (created_at, finished_at, status)
+    - order: Direction (asc/desc, default desc)
+
+    Returns runs with pagination metadata (total, has_next, has_prev).
+    """
+    # Build query with filters
+    query = db.query(Run)
+
+    # Apply filters
+    if case_id is not None:
+        query = query.filter(Run.case_id == case_id)
+    elif client_id is not None:
+        # Filter by client_id requires join with Case
+        query = query.join(Case, Run.case_id == Case.id).filter(Case.client_id == client_id)
+
+    if status is not None:
+        # Validate status enum
+        valid_statuses = ["queued", "processing", "success", "failed", "partial"]
+        if status not in valid_statuses:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid status. Must be one of: {', '.join(valid_statuses)}"
+            )
+        query = query.filter(Run.status == status)
+
+    # Get total count before pagination
+    total = query.count()
+
+    # Apply sorting
+    valid_order_by = ["created_at", "finished_at", "status"]
+    if order_by not in valid_order_by:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid order_by field. Must be one of: {', '.join(valid_order_by)}"
+        )
+
+    if order.lower() not in ["asc", "desc"]:
+        raise HTTPException(status_code=400, detail="Order must be 'asc' or 'desc'")
+
+    # Apply ordering
+    order_column = getattr(Run, order_by)
+    if order.lower() == "desc":
+        query = query.order_by(order_column.desc())
+    else:
+        query = query.order_by(order_column.asc())
+
+    # Apply pagination
+    runs = query.offset(offset).limit(limit).all()
+
+    # Build RunResponse objects
+    run_responses = []
+    for run in runs:
+        # Get document counts
+        total_docs = db.query(Document).filter(Document.run_id == run.id).count()
+        processed_docs = db.query(Document).filter(
+            Document.run_id == run.id,
+            Document.status.in_([DocumentStatus.SUCCESS])
+        ).count()
+        failed_docs = db.query(Document).filter(
+            Document.run_id == run.id,
+            Document.status == DocumentStatus.FAILED
+        ).count()
+        pending_docs = total_docs - processed_docs - failed_docs
+
+        run_responses.append(RunResponse(
+            run_id=run.id,
+            case_id=run.case_id,
+            status=run.status.value,
+            provider=run.provider,
+            model=run.model,
+            created_at=run.created_at,
+            started_at=run.started_at,
+            finished_at=run.finished_at,
+            counts={
+                "total": total_docs,
+                "processed": processed_docs,
+                "failed": failed_docs,
+                "pending": pending_docs
+            },
+            timings={
+                "docling_seconds": run.docling_seconds,
+                "extractor_seconds": run.extractor_seconds,
+                "total_seconds": run.total_seconds
+            },
+            cost_usd=run.cost_usd,
+            error=run.error
+        ))
+
+    # Calculate pagination metadata
+    has_next = (offset + limit) < total
+    has_prev = offset > 0
+
+    return RunListResponse(
+        runs=run_responses,
+        pagination=PaginationMetadata(
+            total=total,
+            limit=limit,
+            offset=offset,
+            has_next=has_next,
+            has_prev=has_prev
+        )
+    )
+
+
 @app.put("/v1/runs/{run_id}/upload")
 async def upload_file_proxy(
 run_id: int,

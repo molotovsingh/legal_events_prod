@@ -154,10 +154,14 @@
    - ✅ Status badge added to README
    - ✅ Pip caching for faster builds
    - ✅ Zero external service dependencies (tests run anywhere)
-4. [ ] **P1: Add list-runs API endpoint** 🟡 HIGH
-   - Create `GET /v1/runs?client_id={id}&case_id={id}&limit={n}&offset={n}`
-   - Stop frontend from guessing via clients/cases
-   - Support filtering and pagination
+4. [x] **P1: Add list-runs API endpoint** ✅ COMPLETED
+   - ✅ Created GET /v1/runs with comprehensive filtering
+   - ✅ Query parameters: client_id, case_id, status, limit, offset, order_by, order
+   - ✅ Pagination metadata (total, has_next, has_prev)
+   - ✅ Response schemas (PaginationMetadata, RunListResponse)
+   - ✅ Frontend updated to use new endpoint (eliminates N+1 query problem)
+   - ✅ Pagination controls in UI (Previous/Next buttons)
+   - ✅ Verified with manual testing (filtering, pagination, sorting)
 5. [ ] **P2: DeepSeek integration** 🟢 MEDIUM
    - Wire API key in .env
    - Verify minimal flow

@@ -199,18 +199,18 @@
             </div>
         </div>
 
-        <!-- Browse Cases -->
+        <!-- Browse Runs -->
         <div class="bg-white shadow-lg rounded-lg mb-8 p-6">
-            <h2 class="text-xl font-bold text-gray-800 mb-4">📁 Browse Cases</h2>
+            <h2 class="text-xl font-bold text-gray-800 mb-4">📊 Recent Runs</h2>
             <p class="text-sm text-gray-600 mb-3">
-                <em>Note: Runs view coming soon. Currently showing cases grouped by client.</em>
+                View recent document processing runs with status, progress, and metadata.
             </p>
             <button onclick="loadRuns()"
                     class="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600 mb-4">
-                Refresh Cases
+                Refresh Runs
             </button>
             <div id="runsList" class="space-y-2">
-                <p class="text-gray-500">No cases loaded yet...</p>
+                <p class="text-gray-500">Loading runs...</p>
             </div>
         </div>
 
@@ -625,44 +625,95 @@
             }, 2000); // Check every 2 seconds
         }
 
-        async function loadRuns() {
+        async function loadRuns(limit = 20, offset = 0) {
             try {
-                // For demo, we'll fetch recent cases and their runs
-                const clientsResponse = await axios.get(`${API_URL}/v1/clients`);
-                const clients = clientsResponse.data;
-                
+                // Fetch runs using the new efficient GET /v1/runs endpoint
+                const response = await axios.get(`${API_URL}/v1/runs`, {
+                    params: { limit, offset }
+                });
+
+                const runs = response.data.runs;
+                const pagination = response.data.pagination;
+
                 let runsHtml = '';
-                
-                for (const client of clients.slice(0, 5)) { // Limit to 5 clients
-                    const casesResponse = await axios.get(`${API_URL}/v1/clients/${client.id}/cases`);
-                    const cases = casesResponse.data;
-                    
-                    for (const caseData of cases.slice(0, 3)) { // Limit to 3 cases per client
-                        // Note: In production, add endpoint to get runs by case
+
+                if (runs.length === 0) {
+                    runsHtml = '<p class="text-gray-500">No runs found. Create a client, case, and run to get started.</p>';
+                } else {
+                    for (const run of runs) {
+                        const statusColors = {
+                            'queued': 'bg-gray-100',
+                            'processing': 'bg-yellow-100',
+                            'success': 'bg-green-100',
+                            'failed': 'bg-red-100',
+                            'partial': 'bg-orange-100'
+                        };
+
+                        const statusColor = statusColors[run.status] || 'bg-gray-100';
+                        const createdDate = new Date(run.created_at).toLocaleString();
+
                         runsHtml += `
-                            <div class="border rounded p-4 hover:bg-gray-50">
+                            <div class="border rounded p-4 hover:bg-gray-50 ${statusColor}">
                                 <div class="flex justify-between items-center">
-                                    <div>
-                                        <span class="font-semibold">${client.name}</span> - 
-                                        <span class="text-gray-600">${caseData.name}</span>
+                                    <div class="flex-1">
+                                        <div class="flex items-center space-x-2">
+                                            <span class="font-semibold">Run ${run.run_id}</span>
+                                            <span class="text-sm text-gray-600">|</span>
+                                            <span class="text-sm text-gray-600">Case ${run.case_id}</span>
+                                            <span class="text-sm text-gray-600">|</span>
+                                            <span class="text-sm font-medium ${run.status === 'success' ? 'text-green-700' : run.status === 'failed' ? 'text-red-700' : 'text-gray-700'}">${run.status.toUpperCase()}</span>
+                                        </div>
+                                        <div class="text-sm text-gray-600 mt-1">
+                                            ${run.provider} / ${run.model || 'default'} |
+                                            ${run.counts.processed}/${run.counts.total} docs |
+                                            ${createdDate}
+                                        </div>
                                     </div>
-                                    <button onclick="viewCase(${caseData.id})" 
+                                    <button onclick="viewRun(${run.run_id})"
                                             class="bg-blue-500 text-white px-3 py-1 rounded text-sm hover:bg-blue-600">
-                                        View Case
+                                        View
                                     </button>
                                 </div>
                             </div>
                         `;
                     }
+
+                    // Add pagination controls if needed
+                    if (pagination.total > limit) {
+                        runsHtml += `
+                            <div class="mt-4 flex justify-between items-center text-sm text-gray-600">
+                                <span>Showing ${offset + 1}-${Math.min(offset + limit, pagination.total)} of ${pagination.total} runs</span>
+                                <div class="space-x-2">
+                                    ${pagination.has_prev ?
+                                        `<button onclick="loadRuns(${limit}, ${offset - limit})" class="bg-gray-300 px-3 py-1 rounded hover:bg-gray-400">Previous</button>` :
+                                        '<button class="bg-gray-200 px-3 py-1 rounded text-gray-400 cursor-not-allowed" disabled>Previous</button>'}
+                                    ${pagination.has_next ?
+                                        `<button onclick="loadRuns(${limit}, ${offset + limit})" class="bg-gray-300 px-3 py-1 rounded hover:bg-gray-400">Next</button>` :
+                                        '<button class="bg-gray-200 px-3 py-1 rounded text-gray-400 cursor-not-allowed" disabled>Next</button>'}
+                                </div>
+                            </div>
+                        `;
+                    }
                 }
-                
-                document.getElementById('runsList').innerHTML = runsHtml ||
-                    '<p class="text-gray-500">No cases found. Create a client and case first.</p>';
+
+                document.getElementById('runsList').innerHTML = runsHtml;
 
             } catch (error) {
-                console.error('Load cases error:', error);
+                console.error('Load runs error:', error);
                 document.getElementById('runsList').innerHTML =
-                    '<p class="text-red-600">Failed to load cases</p>';
+                    '<p class="text-red-600">Failed to load runs. Please check API connection.</p>';
+            }
+        }
+
+        async function viewRun(runId) {
+            try {
+                const response = await axios.get(`${API_URL}/v1/runs/${runId}`);
+                showRunDetails(response.data);
+                if (response.data.status !== 'queued') {
+                    loadEvents(runId);
+                }
+            } catch (error) {
+                console.error('Failed to load run details:', error);
             }
         }
 
