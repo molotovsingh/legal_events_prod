@@ -1,5 +1,7 @@
 # Legal Events Extraction - Production System
 
+[![Tests](https://github.com/molotovsingh/legal_events_prod/actions/workflows/test.yml/badge.svg)](https://github.com/molotovsingh/legal_events_prod/actions/workflows/test.yml)
+
 **Status:** 🚧 Work in Progress (Not Production-Ready)
 
 This repository contains the production-track version of the legal events extraction system, forked from the POC testing environment (firstcut_testing_libs v0.10.1).

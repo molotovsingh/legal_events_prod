@@ -141,10 +141,15 @@
    - Test actual endpoint at api/main.py:841, not just serializers
    - Include regeneration path (delete from MinIO, re-request)
    - Target: Validates Phase 2 exit check #2
-3. [ ] **P1: CI - GitHub Actions workflow** 🟡 HIGH
-   - Create `.github/workflows/test.yml`
-   - Run test suite on PRs
-   - Include linting, unit tests, integration tests
+3. [x] **P1: CI - GitHub Actions workflow** ✅ COMPLETED
+   - ✅ Created `.github/workflows/test.yml` with comprehensive CI
+   - ✅ Multi-version Python testing (3.9, 3.10, 3.11, 3.12)
+   - ✅ Automated test execution on push and PRs
+   - ✅ Code quality checks (Ruff linting + formatting)
+   - ✅ Test summary generation in GitHub UI
+   - ✅ Status badge added to README
+   - ✅ Pip caching for faster builds
+   - ✅ Zero external service dependencies (tests run anywhere)
 4. [ ] **P1: Add list-runs API endpoint** 🟡 HIGH
    - Create `GET /v1/runs?client_id={id}&case_id={id}&limit={n}&offset={n}`
    - Stop frontend from guessing via clients/cases
