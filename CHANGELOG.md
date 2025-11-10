@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.2] - 2025-11-10
+
+### Fixed
+- Critical export functionality bug causing blank browser tabs
+  - Frontend: Changed from JSON response parsing to blob download handling
+  - Backend: Added proper StreamingResponse handling with axios responseType: 'blob'
+  - Impact: CSV, XLSX, and JSON exports now download correctly instead of opening blank tabs
+- Export resilience improvements for edge cases
+  - Regenerate artifacts when storage objects are missing (prevents 404 errors)
+  - Update existing artifact metadata instead of creating duplicates
+  - Add content-type specification for MinIO uploads (application/json, text/csv, xlsx)
+  - Specify openpyxl engine explicitly for XLSX generation (prevents ambiguous engine selection)
+- Worker status endpoint error handling
+  - Return schema-compliant response on exceptions (prevents 500 errors)
+  - Changed workers_with_heartbeat from None to 0 in fallback response
+  - Ensures Pydantic validation always succeeds
+
+### Technical Details
+- Frontend changes (index.html): Export download handling with blob URLs
+- Backend changes (api/main.py): Export endpoint hardening and artifact regeneration
+- All changes backward compatible with existing API contracts
+
 ## [0.9.1] - 2025-11-09
 
 ### Added
