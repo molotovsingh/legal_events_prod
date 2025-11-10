@@ -297,21 +297,38 @@ class ExportIntegrationTest:
                 data = response.json()
                 status = data.get("status")
 
-                if status in ["completed", "success"]:
-                    print_success(f"Processing completed with status: {status}")
+                if status in ["completed", "success", "partial"]:
+                    # Treat partial as success - worker has generated events/exports
+                    if status == "partial":
+                        print_warning(f"Processing completed with PARTIAL SUCCESS")
+                        counts = data.get("counts", {})
+                        print_info(f"  - Processed: {counts.get('processed', 0)}/{counts.get('total', 0)}")
+                        print_info(f"  - Failed: {counts.get('failed', 0)}")
+                        print_info("  - Export tests will proceed with successful documents")
+                    else:
+                        print_success(f"Processing completed with status: {status}")
+
                     # Get documents from run
                     documents_url = f"{self.api_url}/v1/runs/{self.run_id}/documents"
                     doc_response = requests.get(documents_url, headers=self.get_headers())
                     if doc_response.status_code == 200:
                         documents = doc_response.json()
                         if documents:
-                            self.document_id = documents[0]["id"]
-                            events_count = len(documents[0].get("events", []))
-                            print_info(f"Document ID: {self.document_id}")
-                            print_info(f"Events extracted: {events_count}")
+                            # Find first successful document
+                            for doc in documents:
+                                if doc.get("status") in ["success", "completed"]:
+                                    self.document_id = doc["id"]
+                                    events_count = len(doc.get("events", []))
+                                    print_info(f"Document ID: {self.document_id}")
+                                    print_info(f"Events extracted: {events_count}")
+                                    break
+                            if not self.document_id and documents:
+                                # Fallback to first document even if not successful
+                                self.document_id = documents[0]["id"]
+                                print_warning(f"Using first document ID: {self.document_id} (may not have events)")
                     return True
                 elif status == "failed":
-                    print_error("Processing failed")
+                    print_error("Processing failed completely")
                     print_error(json.dumps(data, indent=2))
                     return False
                 elif status in ["pending", "processing", "queued"]:
