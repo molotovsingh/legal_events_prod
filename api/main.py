@@ -547,7 +547,8 @@ async def list_runs(
             Document.run_id == run.id,
             Document.status == DocumentStatus.FAILED
         ).count()
-        pending_docs = total_docs - processed_docs - failed_docs
+        # Clamp to non-negative to handle race conditions between count queries
+        pending_docs = max(0, total_docs - processed_docs - failed_docs)
 
         run_responses.append(RunResponse(
             run_id=run.id,
