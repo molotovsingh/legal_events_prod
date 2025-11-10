@@ -1,7 +1,7 @@
 # System Status
 
 **Last Updated:** 2025-11-10
-**Current Phase:** Phase 3 - Iterative Fixes (ACTIVE)
+**Current Phase:** Phase 2 - Testing & Bug Discovery (PENDING FINAL CHECKS)
 
 ---
 
@@ -42,7 +42,7 @@
 
 ---
 
-### ✅ Phase 2: Testing & Bug Discovery (COMPLETE)
+### 🚧 Phase 2: Testing & Bug Discovery (PENDING FINAL CHECKS)
 
 **Goal:** Understand what works and what needs fixing
 
@@ -88,31 +88,42 @@
 - [ ] Document all bugs found in GitHub Issues
 - [x] Update this STATUS.md with findings
 
-**Current Status:** ✅ COMPLETE - Core functionality validated and working
+**Current Status:** 🚧 PENDING FINAL CHECKS - Core functionality validated, exit criteria need execution
 
-**Phase 2 Progress:** 100% complete
+**Phase 2 Progress:** 85% complete
 - ✅ Providers tested: 3/5 working (OpenRouter, Anthropic, OpenAI)
-- ✅ Export tested: 3/3 formats working (CSV, XLSX, JSON)
+- ✅ Export serializers tested: 3/3 formats working (CSV, XLSX, JSON)
 - ✅ Comprehensive test suites created (test_providers.py, test_export_functionality.py)
 - ✅ Critical bugs discovered and fixed (export functionality, worker monitoring)
 - ✅ Worker heartbeat monitoring operational with stale detection
 
-**Completion Date:** 2025-11-10 (v0.9.2)
+**Remaining Exit Checks (Required by Boss):**
+1. [ ] **Two sample PDFs run end-to-end** without critical errors
+   - [ ] famas_transaction_fee.pdf: upload → process → extract → export workflow
+   - [ ] amrapali_allotment_letter.pdf: upload → process → extract → export workflow
+   - Document results with logs, screenshots, verify artifacts in MinIO
+2. [ ] **Exports download and open correctly** - Test actual API endpoint
+   - [ ] Create integration test hitting `/v1/runs/{run_id}/export` endpoint
+   - [ ] Test artifact regeneration path (delete from MinIO, re-request)
+   - [ ] Verify downloaded files open in Excel/text editors
+3. ✅ **At least two event providers verified** - DONE (3 providers working)
+4. [ ] **Health endpoints reflect reality during worker blip**
+   - [ ] Simulate worker failure (kill container mid-processing)
+   - [ ] Verify `/v1/workers/status` shows degraded state
+   - [ ] Restart worker and verify recovery to healthy
+   - [ ] Document findings in test results
 
-**Achievements:**
-- Automated test infrastructure in place
-- Production-ready functionality validated
-- System maturity warrants transition to iterative fixes and production hardening
+**Target Completion:** After all exit checks pass
 
 ---
 
-### 🚧 Phase 3: Iterative Fixes (ACTIVE - 35%)
+### 📋 Phase 3: Iterative Fixes (NEXT - Backlog Ready)
 
-**Goal:** Fix discovered bugs one by one
+**Goal:** Fix discovered bugs one by one with focused backlog
 
-**Status:** Now active as primary phase (transitioned from Phase 2)
+**Status:** Waiting for Phase 2 exit checks to complete
 
-**Completed Fixes:**
+**Completed Fixes (v0.9.0-v0.9.2):**
 - [x] P1: Worker health status alignment (healthy vs status mismatch) - v0.9.0
 - [x] P2: TypeError on None text in provider tests - v0.9.1
 - [x] Export frontend bug (blank tabs issue) - v0.9.2
@@ -121,14 +132,36 @@
 - [x] LangExtract error handling (retry logic, better messages) - v0.9.1
 - [x] Worker status error response schema compliance - v0.9.2
 
-**In Progress:**
-- [ ] LangExtract module installation (requires Python 3.10+, use Docker)
-- [ ] End-to-end testing with actual case PDFs (famas_dispute, amrapali_case)
-- [ ] Performance optimizations as needed
+**Focused Backlog (Required by Boss):**
+1. [ ] **P1: Unify duplicate /v1/providers handlers** 🔴 CRITICAL
+   - Merge handlers at api/main.py lines 193 and 1129 (different response shapes)
+   - Include `supports_runtime_model` in unified response
+   - Remove duplicate endpoint definition
+2. [ ] **P0: Add integration tests for export API** 🔴 BLOCKING
+   - Test actual endpoint at api/main.py:841, not just serializers
+   - Include regeneration path (delete from MinIO, re-request)
+   - Target: Validates Phase 2 exit check #2
+3. [ ] **P1: CI - GitHub Actions workflow** 🟡 HIGH
+   - Create `.github/workflows/test.yml`
+   - Run test suite on PRs
+   - Include linting, unit tests, integration tests
+4. [ ] **P1: Add list-runs API endpoint** 🟡 HIGH
+   - Create `GET /v1/runs?client_id={id}&case_id={id}&limit={n}&offset={n}`
+   - Stop frontend from guessing via clients/cases
+   - Support filtering and pagination
+5. [ ] **P2: DeepSeek integration** 🟢 MEDIUM
+   - Wire API key in .env
+   - Verify minimal flow
+   - File tracking issue if not ready
+6. [ ] **P2: Documentation polish** 🟢 MEDIUM (MOSTLY DONE)
+   - ✅ Brittle line refs already removed (v0.9.1)
+   - Finalize provider/model documentation
 
 **Timeline:** Flexible, no pressure
 
 **Tracking:** Update STATUS.md after each fix
+
+**Optional:** Add stabilization sprint milestone before cloud migration
 
 ---
 
