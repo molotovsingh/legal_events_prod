@@ -854,28 +854,31 @@ async def export_run(
         Artifact.kind == fmt
     ).first()
     
+    existing_artifact = artifact if artifact else None
     if artifact:
-        # Stream existing artifact directly (avoids MinIO hostname issues)
+        # Stream existing artifact directly when available; if missing in storage, regenerate
         storage = MinioStorage()
         file_bytes = storage.download_bytes(artifact.storage_key)
 
-        if not file_bytes:
-            raise HTTPException(status_code=404, detail="Artifact file not found in storage")
+        if file_bytes:
+            # Set content type based on format
+            content_types = {
+                "csv": "text/csv",
+                "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                "json": "application/json"
+            }
 
-        # Set content type based on format
-        content_types = {
-            "csv": "text/csv",
-            "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            "json": "application/json"
-        }
+            filename = f"run_{run_id}_events.{fmt}"
 
-        filename = f"run_{run_id}_events.{fmt}"
-
-        return StreamingResponse(
-            iter([file_bytes]),
-            media_type=content_types.get(fmt, "application/octet-stream"),
-            headers={"Content-Disposition": f"attachment; filename={filename}"}
-        )
+            return StreamingResponse(
+                iter([file_bytes]),
+                media_type=content_types.get(fmt, "application/octet-stream"),
+                headers={"Content-Disposition": f"attachment; filename={filename}"}
+            )
+        else:
+            logger.warning(
+                f"Artifact record exists but object missing in storage: {artifact.storage_key} — regenerating"
+            )
     
     # Generate new artifact (this would be done in background normally)
     # For now, we'll do it synchronously as a placeholder
@@ -892,6 +895,7 @@ async def export_run(
         data = [event.to_dict() for event in events]
         content = json.dumps(data, indent=2)
         content_bytes = content.encode('utf-8')
+        content_type = "application/json"
     
     elif fmt == "csv":
         # Generate CSV export
@@ -907,6 +911,7 @@ async def export_run(
         
         content = output.getvalue()
         content_bytes = content.encode('utf-8')
+        content_type = "text/csv"
     
     else:  # xlsx
         # Generate Excel export
@@ -917,8 +922,10 @@ async def export_run(
         df = pd.DataFrame(data)
         
         output = io.BytesIO()
-        df.to_excel(output, index=False, sheet_name="Legal Events")
+        # Use openpyxl engine (available per requirements.txt) for writing xlsx
+        df.to_excel(output, index=False, sheet_name="Legal Events", engine='openpyxl')
         content_bytes = output.getvalue()
+        content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     
     # Determine case via the run to avoid relying on event relationships
     run_obj = db.query(Run).filter(Run.id == run_id).first()
@@ -937,19 +944,25 @@ async def export_run(
     )
 
     # Upload to storage first; if DB commit fails later, delete the object
-    uploaded_ok = storage.upload_bytes(storage_key, content_bytes)
+    uploaded_ok = storage.upload_bytes(storage_key, content_bytes, content_type=content_type)
     if not uploaded_ok:
         raise HTTPException(status_code=500, detail="Failed to upload artifact to storage")
 
-    # Create artifact record with cleanup on failure
+    # Create or update artifact record with cleanup on failure
     try:
-        artifact = Artifact(
-            run_id=run_id,
-            kind=fmt,
-            storage_key=storage_key,
-            size_bytes=len(content_bytes)
-        )
-        db.add(artifact)
+        if existing_artifact is not None:
+            # Update existing metadata
+            existing_artifact.size_bytes = len(content_bytes)
+            existing_artifact.storage_key = storage_key
+            db.add(existing_artifact)
+        else:
+            artifact = Artifact(
+                run_id=run_id,
+                kind=fmt,
+                storage_key=storage_key,
+                size_bytes=len(content_bytes)
+            )
+            db.add(artifact)
         db.commit()
     except Exception as e:
         db.rollback()
@@ -957,7 +970,7 @@ async def export_run(
             storage.delete_object(storage_key)
         except Exception:
             logger.error("Failed to rollback uploaded artifact from storage after DB error")
-        logger.error(f"Failed to create artifact record: {e}")
+        logger.error(f"Failed to save artifact metadata: {e}")
         raise HTTPException(status_code=500, detail="Failed to save artifact metadata")
 
     # Stream file directly (avoids MinIO hostname issues)
@@ -1265,16 +1278,17 @@ async def get_worker_status():
         }
     except Exception as e:
         logger.error(f"Error getting worker status: {e}")
+        # Return a schema-conformant fallback to satisfy response_model validation
         return {
             "workers_registered": 0,
-            "workers_with_heartbeat": None,
+            "workers_with_heartbeat": 0,
+            "workers_stale": 0,
             "workers": [],
             "queue_depth": 0,
             "jobs_processing": 0,
             "queues": {},
             "healthy": False,
             "status": "unhealthy",
-            "error": str(e),
             "timestamp": datetime.utcnow().isoformat()
         }
 
