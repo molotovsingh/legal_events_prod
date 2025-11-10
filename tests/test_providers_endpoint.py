@@ -14,11 +14,20 @@ Tests verify:
 This validates Phase 3 P1 fix: Unified /v1/providers handler
 """
 
+import os
 import pytest
 from datetime import datetime
+from unittest.mock import MagicMock
+
+# Set required environment variables BEFORE importing app
+# This prevents RuntimeError during app initialization
+os.environ.setdefault("JWT_SECRET_KEY", "test-secret-key-for-unit-tests")
+os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
+os.environ.setdefault("REDIS_URL", "redis://localhost:6379")
+
 from fastapi.testclient import TestClient
 
-# Import the FastAPI app
+# Import the FastAPI app AFTER setting environment variables
 from api.main import app
 
 # Create test client (runs in-process, no external server needed)
