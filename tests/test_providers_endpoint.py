@@ -39,12 +39,20 @@ def setup_test_environment():
     os.environ.setdefault("MINIO_SECURE", "false")
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 def mock_dependencies():
     """
     Stub all external service modules BEFORE importing api.main.
+    Module-scoped to prevent leaking mocks into other test modules.
+
     Prevents import-time connections to Redis, MinIO, etc.
     """
+    # Save original modules if they exist (for restoration)
+    original_modules = {}
+    for module_name in ['api.event_processor', 'infra.queue', 'infra.storage']:
+        if module_name in sys.modules:
+            original_modules[module_name] = sys.modules[module_name]
+
     # Stub api.event_processor (Redis event consumer)
     event_processor_mock = Mock()
     event_processor_mock.start_event_processor = Mock()
@@ -71,13 +79,23 @@ def mock_dependencies():
 
     yield
 
-    # Cleanup after tests
-    for module in ['api.event_processor', 'infra.queue', 'infra.storage']:
-        if module in sys.modules:
-            del sys.modules[module]
+    # Cleanup: Remove mocked modules
+    for module_name in ['api.event_processor', 'infra.queue', 'infra.storage']:
+        if module_name in sys.modules:
+            del sys.modules[module_name]
+
+    # Restore original modules if they existed
+    for module_name, original_module in original_modules.items():
+        sys.modules[module_name] = original_module
+
+    # Force reload of api.main to clear cached imports
+    # This ensures other test modules get fresh, real implementations
+    if 'api.main' in sys.modules:
+        import importlib
+        importlib.reload(sys.modules['api.main'])
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 def test_client(setup_test_environment, mock_dependencies):
     """
     Create TestClient AFTER all stubs are in place.
