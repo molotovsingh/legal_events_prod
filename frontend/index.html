@@ -4,12 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Legal Events v2 - Test Interface</title>
-    <!-- Content Security Policy to prevent inline scripts -->
+    <!-- Content Security Policy - allows external scripts from same origin -->
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.tailwindcss.com https://unpkg.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; img-src 'self' data:;">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
     <!-- DOMPurify for HTML sanitization -->
     <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
+    <!-- Application JavaScript (external file) -->
+    <script src="app.js" defer></script>
     <style>
         .fade-in {
             animation: fadeIn 0.5s;
@@ -62,691 +64,150 @@
     </style>
 </head>
 <body class="bg-gray-50">
-    <div class="container mx-auto px-4 py-8">
-        <div class="max-w-6xl mx-auto">
-            <!-- Header -->
-            <div class="bg-white rounded-lg shadow-md p-6 mb-6">
-                <div class="flex justify-between items-center">
-                    <h1 class="text-3xl font-bold text-gray-800">Legal Events Extraction v2</h1>
-                    <div id="statusText" class="text-sm"></div>
-                </div>
-            </div>
-
-            <!-- Provider Selection -->
-            <div class="bg-white rounded-lg shadow-md p-6 mb-6">
-                <h2 class="text-xl font-semibold mb-4">Provider Settings</h2>
-                <div class="grid grid-cols-2 gap-4">
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">
-                            Event Extractor Provider
-                        </label>
-                        <select id="providerSelect" class="w-full p-2 border rounded">
-                            <!-- Options will be populated dynamically -->
-                        </select>
+    <!-- Login Modal -->
+    <div id="loginModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full hidden z-50">
+        <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+            <div class="mt-3">
+                <h3 class="text-lg font-medium leading-6 text-gray-900 mb-4">Login Required</h3>
+                <div class="mt-2">
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Email</label>
+                        <input type="email" id="loginEmail"
+                               class="w-full p-2 border rounded focus:ring-blue-500 focus:border-blue-500"
+                               placeholder="admin@example.com">
                     </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">
-                            Model
-                        </label>
-                        <select id="modelSelect" class="w-full p-2 border rounded">
-                            <option value="">Select a provider first</option>
-                        </select>
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Password</label>
+                        <input type="password" id="loginPassword"
+                               class="w-full p-2 border rounded focus:ring-blue-500 focus:border-blue-500"
+                               placeholder="Password">
+                    </div>
+                    <div id="loginError" class="text-red-600 text-sm mb-4 hidden"></div>
+                    <div class="flex justify-end space-x-2">
+                        <button id="cancelLoginBtn"
+                                class="px-4 py-2 bg-gray-300 text-gray-800 rounded hover:bg-gray-400">
+                            Cancel
+                        </button>
+                        <button id="loginBtn"
+                                class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">
+                            Login
+                        </button>
+                    </div>
+                    <div class="mt-4 text-xs text-gray-600">
+                        <p>Default credentials for development:</p>
+                        <p>Email: dev@localhost</p>
+                        <p>Password: devpass123</p>
                     </div>
                 </div>
-            </div>
-
-            <!-- Step 1: Create Client -->
-            <div class="bg-white rounded-lg shadow-md p-6 mb-6">
-                <h2 class="text-xl font-semibold mb-4">Step 1: Create Client</h2>
-                <div class="flex space-x-4">
-                    <input type="text" id="clientName" placeholder="Enter client name"
-                           class="flex-1 p-2 border rounded">
-                    <button id="createClientBtn"
-                            class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
-                        Create Client
-                    </button>
-                </div>
-                <div id="clientResult" class="mt-2 text-sm"></div>
-            </div>
-
-            <!-- Step 2: Create Case -->
-            <div class="bg-white rounded-lg shadow-md p-6 mb-6">
-                <h2 class="text-xl font-semibold mb-4">Step 2: Create Case</h2>
-                <div class="grid grid-cols-2 gap-4">
-                    <input type="text" id="clientId" placeholder="Client ID (from step 1)"
-                           class="p-2 border rounded">
-                    <input type="text" id="caseName" placeholder="Enter case name"
-                           class="p-2 border rounded">
-                </div>
-                <button id="createCaseBtn"
-                        class="mt-4 bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
-                    Create Case
-                </button>
-                <div id="caseResult" class="mt-2 text-sm"></div>
-            </div>
-
-            <!-- Step 3: Upload Documents -->
-            <div class="bg-white rounded-lg shadow-md p-6 mb-6">
-                <h2 class="text-xl font-semibold mb-4">Step 3: Upload Documents & Start Run</h2>
-                <div class="grid grid-cols-2 gap-4 mb-4">
-                    <input type="text" id="caseIdForRun" placeholder="Case ID (from step 2)"
-                           class="p-2 border rounded">
-                    <input type="file" id="fileInput" multiple accept=".pdf,.txt,.doc,.docx"
-                           class="p-2 border rounded">
-                </div>
-                <button id="startRunBtn"
-                        class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">
-                    Start Processing Run
-                </button>
-                <div id="uploadResult" class="mt-2 text-sm"></div>
-            </div>
-
-            <!-- Recent Runs -->
-            <div class="bg-white rounded-lg shadow-md p-6 mb-6">
-                <div class="flex justify-between items-center mb-4">
-                    <h2 class="text-xl font-semibold">Recent Runs</h2>
-                    <button id="refreshRunsBtn"
-                            class="bg-gray-500 text-white px-3 py-1 rounded text-sm hover:bg-gray-600">
-                        Refresh
-                    </button>
-                </div>
-                <div id="runsList" class="space-y-2"></div>
-            </div>
-
-            <!-- Events Display -->
-            <div id="eventsSection" class="bg-white rounded-lg shadow-md p-6 hidden">
-                <h2 class="text-xl font-semibold mb-4">Extracted Events</h2>
-                <div id="eventsContent"></div>
             </div>
         </div>
     </div>
 
-    <script>
-        // API configuration
-        const API_URL = 'http://localhost:8000';
-
-        // Initialize DOMPurify with safe configuration
-        const purifyConfig = {
-            ALLOWED_TAGS: ['span', 'div', 'p', 'button', 'table', 'thead', 'tbody', 'tr', 'td', 'th'],
-            ALLOWED_ATTR: ['class', 'data-run-id', 'data-case-id'],
-            KEEP_CONTENT: true
-        };
-
-        // Helper function to safely set text content
-        function safeSetText(elementId, text) {
-            const element = document.getElementById(elementId);
-            if (element) {
-                element.textContent = text;
-            }
-        }
-
-        // Helper function to safely create element with text
-        function createTextElement(tag, text, className = '') {
-            const element = document.createElement(tag);
-            element.textContent = text;
-            if (className) {
-                element.className = className;
-            }
-            return element;
-        }
-
-        // Initialize on load
-        document.addEventListener('DOMContentLoaded', function() {
-            checkHealth();
-            loadProviders();
-            loadRuns();
-            setupEventListeners();
-        });
-
-        function setupEventListeners() {
-            // Use addEventListener instead of onclick attributes
-            document.getElementById('createClientBtn').addEventListener('click', createClient);
-            document.getElementById('createCaseBtn').addEventListener('click', createCase);
-            document.getElementById('startRunBtn').addEventListener('click', startRun);
-            document.getElementById('refreshRunsBtn').addEventListener('click', () => loadRuns());
-
-            document.getElementById('providerSelect').addEventListener('change', function(e) {
-                loadModels(e.target.value);
-            });
-        }
-
-        async function loadProviders() {
-            const select = document.getElementById('providerSelect');
-            select.textContent = ''; // Clear existing options
-
-            try {
-                const response = await axios.get(`${API_URL}/v1/providers`);
-                const providers = response.data.providers;
-
-                // Find langextract (working provider)
-                const langextract = providers.find(p => p.id === 'langextract');
-                const others = providers.filter(p => p.id !== 'langextract');
-
-                if (langextract && langextract.status === 'available') {
-                    const option = document.createElement('option');
-                    option.value = langextract.id;
-                    option.textContent = `${langextract.name} (${langextract.status})`;
-                    option.selected = true;
-                    select.appendChild(option);
-                }
-
-                others.forEach(provider => {
-                    const option = document.createElement('option');
-                    option.value = provider.id;
-                    option.textContent = `${provider.name} (${provider.status})`;
-                    if (provider.status !== 'available') {
-                        option.disabled = true;
-                    }
-                    select.appendChild(option);
-                });
-
-                // Load models for default provider
-                if (langextract) {
-                    loadModels(langextract.id);
-                }
-            } catch (error) {
-                console.error('Failed to load providers:', error);
-                const option = document.createElement('option');
-                option.textContent = 'Failed to load providers';
-                select.appendChild(option);
-            }
-        }
-
-        async function loadModels(providerId) {
-            const modelSelect = document.getElementById('modelSelect');
-            modelSelect.textContent = ''; // Clear existing options
-
-            if (!providerId) {
-                const option = document.createElement('option');
-                option.textContent = 'Select a provider first';
-                modelSelect.appendChild(option);
-                return;
-            }
-
-            const option = document.createElement('option');
-            option.textContent = 'Loading models...';
-            modelSelect.appendChild(option);
-
-            try {
-                const response = await axios.get(`${API_URL}/v1/models`);
-                const models = response.data.models.filter(m => m.provider === providerId);
-
-                modelSelect.textContent = ''; // Clear loading message
-
-                if (models.length === 0) {
-                    const option = document.createElement('option');
-                    option.textContent = 'No models available';
-                    modelSelect.appendChild(option);
-                    return;
-                }
-
-                models.forEach(model => {
-                    const option = document.createElement('option');
-                    option.value = model.model_id;
-                    option.textContent = `${model.display_name} ($${model.cost_input_per_million}/M tokens)`;
-                    if (model.is_recommended) {
-                        option.selected = true;
-                    }
-                    modelSelect.appendChild(option);
-                });
-            } catch (error) {
-                console.error('Failed to load models:', error);
-                modelSelect.textContent = '';
-                const option = document.createElement('option');
-                option.textContent = 'Failed to load models';
-                modelSelect.appendChild(option);
-            }
-        }
-
-        async function checkHealth() {
-            try {
-                const response = await axios.get(`${API_URL}/health`);
-                const health = response.data;
-
-                const statusEl = document.getElementById('statusText');
-                statusEl.textContent = ''; // Clear existing content
-
-                if (health.status === 'healthy') {
-                    const span = createTextElement('span', '✅ All systems operational', 'text-green-600');
-                    statusEl.appendChild(span);
-                } else {
-                    const span = createTextElement('span', '⚠️ Some systems degraded', 'text-yellow-600');
-                    statusEl.appendChild(span);
-                }
-
-                // Show component status
-                const components = health.components;
-                const statusDiv = document.createElement('div');
-                statusDiv.className = 'mt-2 text-xs';
-
-                for (const [component, status] of Object.entries(components)) {
-                    const icon = status === 'healthy' ? '✅' : '❌';
-                    const span = createTextElement('span', `${icon} ${component}`, 'mr-3');
-                    statusDiv.appendChild(span);
-                }
-                statusEl.appendChild(statusDiv);
-
-            } catch (error) {
-                const statusEl = document.getElementById('statusText');
-                statusEl.textContent = '';
-                const span = createTextElement('span', '❌ Cannot connect to API', 'text-red-600');
-                statusEl.appendChild(span);
-                console.error('Health check failed:', error);
-            }
-        }
-
-        async function createClient() {
-            const name = document.getElementById('clientName').value;
-            if (!name) {
-                alert('Please enter a client name');
-                return;
-            }
-
-            try {
-                const response = await axios.post(`${API_URL}/v1/clients`, {
-                    name: name,
-                    reference_code: `REF-${Date.now()}`
-                });
-
-                const client = response.data;
-                const resultEl = document.getElementById('clientResult');
-                resultEl.textContent = '';
-                const span = createTextElement('span', `✅ Created: Client ID ${client.id}`, 'text-green-600');
-                resultEl.appendChild(span);
-                document.getElementById('clientId').value = client.id;
-
-            } catch (error) {
-                const errorMsg = error.response?.data?.detail || error.message;
-                const statusCode = error.response?.status;
-
-                let displayMsg = errorMsg;
-                if (statusCode === 401) {
-                    displayMsg = 'Authentication required. Please login first.';
-                }
-
-                const resultEl = document.getElementById('clientResult');
-                resultEl.textContent = '';
-                const span = createTextElement('span', `❌ Error: ${displayMsg}`, 'text-red-600');
-                resultEl.appendChild(span);
-            }
-        }
-
-        async function createCase() {
-            const clientId = document.getElementById('clientId').value;
-            const caseName = document.getElementById('caseName').value;
-
-            if (!clientId || !caseName) {
-                alert('Please enter both Client ID and Case Name');
-                return;
-            }
-
-            try {
-                const response = await axios.post(`${API_URL}/v1/cases`, {
-                    client_id: parseInt(clientId),
-                    name: caseName,
-                    description: 'Test case created from UI'
-                });
-
-                const caseData = response.data;
-                const resultEl = document.getElementById('caseResult');
-                resultEl.textContent = '';
-                const span = createTextElement('span', `✅ Created: Case ID ${caseData.id}`, 'text-green-600');
-                resultEl.appendChild(span);
-                document.getElementById('caseIdForRun').value = caseData.id;
-
-            } catch (error) {
-                const errorMsg = error.response?.data?.detail || error.message;
-                const resultEl = document.getElementById('caseResult');
-                resultEl.textContent = '';
-                const span = createTextElement('span', `❌ Error: ${errorMsg}`, 'text-red-600');
-                resultEl.appendChild(span);
-            }
-        }
-
-        async function startRun() {
-            const caseId = document.getElementById('caseIdForRun').value;
-            const files = document.getElementById('fileInput').files;
-            const provider = document.getElementById('providerSelect').value;
-            const model = document.getElementById('modelSelect').value;
-
-            if (!caseId || files.length === 0) {
-                alert('Please enter Case ID and select files');
-                return;
-            }
-
-            const uploadResult = document.getElementById('uploadResult');
-            uploadResult.textContent = '';
-
-            // Show loading spinner
-            const spinnerDiv = document.createElement('div');
-            spinnerDiv.className = 'spinner';
-            uploadResult.appendChild(spinnerDiv);
-            const processingText = createTextElement('span', ' Processing...', '');
-            uploadResult.appendChild(processingText);
-
-            try {
-                // Upload files
-                const formData = new FormData();
-                for (let file of files) {
-                    formData.append('files', file);
-                }
-
-                const uploadResponse = await axios.post(`${API_URL}/v1/upload`, formData, {
-                    headers: {
-                        'Content-Type': 'multipart/form-data'
-                    }
-                });
-
-                const uploadedFiles = uploadResponse.data.files;
-
-                // Create manifest
-                const manifest = uploadedFiles.map(f => ({
-                    filename: f.filename,
-                    storage_path: f.storage_path
-                }));
-
-                // Start run
-                const runResponse = await axios.post(`${API_URL}/v1/runs`, {
-                    case_id: parseInt(caseId),
-                    provider: provider || 'langextract',
-                    model: model || null,
-                    files: manifest
-                });
-
-                const runId = runResponse.data.run_id;
-                uploadResult.textContent = '';
-                const span = createTextElement('span', `✅ Run ${runId} started!`, 'text-green-600');
-                uploadResult.appendChild(span);
-
-                // Start monitoring
-                monitorRun(runId);
-
-            } catch (error) {
-                uploadResult.textContent = '';
-                const errorMsg = error.response?.data?.detail || error.message;
-                const span = createTextElement('span', `❌ Error: ${errorMsg}`, 'text-red-600');
-                uploadResult.appendChild(span);
-            }
-        }
-
-        async function monitorRun(runId) {
-            const interval = setInterval(async () => {
-                try {
-                    const response = await axios.get(`${API_URL}/v1/runs/${runId}`);
-                    const run = response.data;
-
-                    // Update run in list
-                    updateRunInList(run);
-
-                    // If complete, stop monitoring and load events
-                    if (['success', 'failed', 'partial'].includes(run.status)) {
-                        clearInterval(interval);
-                        if (run.status !== 'failed') {
-                            loadEvents(runId);
-                        }
-                    }
-                } catch (error) {
-                    console.error('Monitor error:', error);
-                    clearInterval(interval);
-                }
-            }, 2000); // Check every 2 seconds
-        }
-
-        async function loadRuns(limit = 20, offset = 0) {
-            try {
-                // Fetch runs using the new efficient GET /v1/runs endpoint
-                const response = await axios.get(`${API_URL}/v1/runs`, {
-                    params: { limit, offset }
-                });
-
-                const runs = response.data.runs;
-                const pagination = response.data.pagination;
-
-                const runsListEl = document.getElementById('runsList');
-                runsListEl.textContent = ''; // Clear existing content
-
-                if (runs.length === 0) {
-                    const p = createTextElement('p', 'No runs found. Create a client, case, and run to get started.', 'text-gray-500');
-                    runsListEl.appendChild(p);
-                } else {
-                    for (const run of runs) {
-                        const runEl = createRunElement(run);
-                        runsListEl.appendChild(runEl);
-                    }
-
-                    // Add pagination controls if needed
-                    if (pagination.total > limit) {
-                        const paginationEl = createPaginationElement(pagination, limit, offset);
-                        runsListEl.appendChild(paginationEl);
-                    }
-                }
-
-            } catch (error) {
-                console.error('Load runs error:', error);
-                const runsListEl = document.getElementById('runsList');
-                runsListEl.textContent = '';
-                const p = createTextElement('p', 'Failed to load runs. Please check API connection.', 'text-red-600');
-                runsListEl.appendChild(p);
-            }
-        }
-
-        function createRunElement(run) {
-            const statusColors = {
-                'queued': 'bg-gray-100',
-                'processing': 'bg-yellow-100',
-                'success': 'bg-green-100',
-                'failed': 'bg-red-100',
-                'partial': 'bg-orange-100'
-            };
-
-            const statusColor = statusColors[run.status] || 'bg-gray-100';
-            const createdDate = new Date(run.created_at).toLocaleString();
-
-            const runDiv = document.createElement('div');
-            runDiv.className = `border rounded p-4 hover:bg-gray-50 ${statusColor}`;
-            runDiv.setAttribute('data-run-id', run.run_id);
-
-            const flexDiv = document.createElement('div');
-            flexDiv.className = 'flex justify-between items-center';
-
-            const contentDiv = document.createElement('div');
-            contentDiv.className = 'flex-1';
-
-            // Title line
-            const titleDiv = document.createElement('div');
-            titleDiv.className = 'flex items-center space-x-2';
-
-            const runLabel = createTextElement('span', `Run ${run.run_id}`, 'font-semibold');
-            const sep1 = createTextElement('span', '|', 'text-sm text-gray-600');
-            const caseLabel = createTextElement('span', `Case ${run.case_id}`, 'text-sm text-gray-600');
-            const sep2 = createTextElement('span', '|', 'text-sm text-gray-600');
-
-            const statusClass = run.status === 'success' ? 'text-green-700' :
-                               run.status === 'failed' ? 'text-red-700' : 'text-gray-700';
-            const statusLabel = createTextElement('span', run.status.toUpperCase(), `text-sm font-medium ${statusClass}`);
-
-            titleDiv.appendChild(runLabel);
-            titleDiv.appendChild(sep1);
-            titleDiv.appendChild(caseLabel);
-            titleDiv.appendChild(sep2);
-            titleDiv.appendChild(statusLabel);
-
-            // Details line
-            const detailsDiv = document.createElement('div');
-            detailsDiv.className = 'text-sm text-gray-600 mt-1';
-            detailsDiv.textContent = `${run.provider} / ${run.model || 'default'} | ${run.counts.processed}/${run.counts.total} docs | ${createdDate}`;
-
-            contentDiv.appendChild(titleDiv);
-            contentDiv.appendChild(detailsDiv);
-
-            // View button
-            const viewBtn = document.createElement('button');
-            viewBtn.className = 'bg-blue-500 text-white px-3 py-1 rounded text-sm hover:bg-blue-600';
-            viewBtn.textContent = 'View';
-            viewBtn.addEventListener('click', () => viewRun(run.run_id));
-
-            flexDiv.appendChild(contentDiv);
-            flexDiv.appendChild(viewBtn);
-            runDiv.appendChild(flexDiv);
-
-            return runDiv;
-        }
-
-        function createPaginationElement(pagination, limit, offset) {
-            const paginationDiv = document.createElement('div');
-            paginationDiv.className = 'mt-4 flex justify-between items-center text-sm text-gray-600';
-
-            // Showing text
-            const showingSpan = createTextElement(
-                'span',
-                `Showing ${offset + 1}-${Math.min(offset + limit, pagination.total)} of ${pagination.total} runs`,
-                ''
-            );
-
-            // Button container
-            const buttonsDiv = document.createElement('div');
-            buttonsDiv.className = 'space-x-2';
-
-            // Previous button
-            const prevBtn = document.createElement('button');
-            if (pagination.has_prev) {
-                prevBtn.className = 'bg-gray-300 px-3 py-1 rounded hover:bg-gray-400';
-                prevBtn.textContent = 'Previous';
-                prevBtn.addEventListener('click', () => loadRuns(limit, offset - limit));
-            } else {
-                prevBtn.className = 'bg-gray-200 px-3 py-1 rounded text-gray-400 cursor-not-allowed';
-                prevBtn.textContent = 'Previous';
-                prevBtn.disabled = true;
-            }
-
-            // Next button
-            const nextBtn = document.createElement('button');
-            if (pagination.has_next) {
-                nextBtn.className = 'bg-gray-300 px-3 py-1 rounded hover:bg-gray-400';
-                nextBtn.textContent = 'Next';
-                nextBtn.addEventListener('click', () => loadRuns(limit, offset + limit));
-            } else {
-                nextBtn.className = 'bg-gray-200 px-3 py-1 rounded text-gray-400 cursor-not-allowed';
-                nextBtn.textContent = 'Next';
-                nextBtn.disabled = true;
-            }
-
-            buttonsDiv.appendChild(prevBtn);
-            buttonsDiv.appendChild(nextBtn);
-
-            paginationDiv.appendChild(showingSpan);
-            paginationDiv.appendChild(buttonsDiv);
-
-            return paginationDiv;
-        }
-
-        function updateRunInList(run) {
-            const runEl = document.querySelector(`[data-run-id="${run.run_id}"]`);
-            if (runEl) {
-                const newRunEl = createRunElement(run);
-                runEl.replaceWith(newRunEl);
-            }
-        }
-
-        async function viewRun(runId) {
-            try {
-                const response = await axios.get(`${API_URL}/v1/events?run_id=${runId}`);
-                const events = response.data.events;
-
-                const contentEl = document.getElementById('eventsContent');
-                contentEl.textContent = ''; // Clear existing content
-
-                // Only sanitize if we absolutely need HTML structure
-                // For now, use DOM methods for everything
-                const summaryDiv = document.createElement('div');
-                summaryDiv.className = 'mb-4 text-sm text-gray-600';
-                summaryDiv.textContent = `Run ${runId}: Found ${events.length} legal events`;
-
-                const tableContainer = document.createElement('div');
-                tableContainer.className = 'overflow-x-auto';
-
-                if (events.length > 0) {
-                    const table = createEventsTable(events);
-                    tableContainer.appendChild(table);
-                } else {
-                    const p = createTextElement('p', 'No events extracted', 'text-gray-500');
-                    tableContainer.appendChild(p);
-                }
-
-                contentEl.appendChild(summaryDiv);
-                contentEl.appendChild(tableContainer);
-
-                // Show events section
-                document.getElementById('eventsSection').classList.remove('hidden');
-
-            } catch (error) {
-                console.error('View run error:', error);
-                alert('Failed to load run events');
-            }
-        }
-
-        function createEventsTable(events) {
-            const table = document.createElement('table');
-            table.className = 'min-w-full divide-y divide-gray-200';
-
-            // Create thead
-            const thead = document.createElement('thead');
-            thead.className = 'bg-gray-50';
-            const headerRow = document.createElement('tr');
-
-            const headers = ['#', 'Date', 'Event Particulars', 'Citation', 'Document'];
-            headers.forEach(header => {
-                const th = document.createElement('th');
-                th.className = 'px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider';
-                th.textContent = header;
-                headerRow.appendChild(th);
-            });
-            thead.appendChild(headerRow);
-
-            // Create tbody
-            const tbody = document.createElement('tbody');
-            tbody.className = 'bg-white divide-y divide-gray-200';
-
-            events.forEach(event => {
-                const row = document.createElement('tr');
-
-                const numberTd = createTextElement('td', event.number || '-', 'px-6 py-4 whitespace-nowrap text-sm');
-                const dateTd = createTextElement('td', event.date || '-', 'px-6 py-4 whitespace-nowrap text-sm');
-
-                const particularsTd = document.createElement('td');
-                particularsTd.className = 'px-6 py-4 text-sm truncate-cell';
-                particularsTd.textContent = event.event_particulars || '-';
-                particularsTd.setAttribute('data-full-text', event.event_particulars || '-');
-
-                const citationTd = document.createElement('td');
-                citationTd.className = 'px-6 py-4 text-sm truncate-cell';
-                citationTd.textContent = event.citation || '-';
-                citationTd.setAttribute('data-full-text', event.citation || '-');
-
-                const documentTd = createTextElement('td', event.document_name || '-', 'px-6 py-4 whitespace-nowrap text-sm');
-
-                row.appendChild(numberTd);
-                row.appendChild(dateTd);
-                row.appendChild(particularsTd);
-                row.appendChild(citationTd);
-                row.appendChild(documentTd);
-
-                tbody.appendChild(row);
-            });
-
-            table.appendChild(thead);
-            table.appendChild(tbody);
-
-            return table;
-        }
-
-        async function loadEvents(runId) {
-            await viewRun(runId);
-        }
-
-        // Global functions for backward compatibility (but secured)
-        window.viewRun = viewRun;
-        window.loadRuns = loadRuns;
-    </script>
+    <div class="container mx-auto px-4 py-8">
+        <div class="max-w-6xl mx-auto">
+            <!-- Header with Auth -->
+            <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+                <div class="flex justify-between items-center">
+                    <h1 class="text-3xl font-bold text-gray-800">Legal Events Extraction v2</h1>
+                    <div class="flex items-center space-x-4">
+                        <div id="statusText" class="text-sm"></div>
+                        <div id="authSection" class="flex items-center">
+                            <!-- Auth buttons will be inserted here dynamically -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Main Content (disabled when not authenticated) -->
+            <div id="mainContent">
+                <!-- Provider Selection -->
+                <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+                    <h2 class="text-xl font-semibold mb-4">Provider Settings</h2>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">
+                                Event Extractor Provider
+                            </label>
+                            <select id="providerSelect" class="w-full p-2 border rounded">
+                                <!-- Options will be populated dynamically -->
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">
+                                Model
+                            </label>
+                            <select id="modelSelect" class="w-full p-2 border rounded">
+                                <option value="">Select a provider first</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 1: Create Client -->
+                <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+                    <h2 class="text-xl font-semibold mb-4">Step 1: Create Client</h2>
+                    <div class="flex space-x-4">
+                        <input type="text" id="clientName" placeholder="Enter client name"
+                               class="flex-1 p-2 border rounded">
+                        <button id="createClientBtn"
+                                class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
+                            Create Client
+                        </button>
+                    </div>
+                    <div id="clientResult" class="mt-2 text-sm"></div>
+                </div>
+
+                <!-- Step 2: Create Case -->
+                <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+                    <h2 class="text-xl font-semibold mb-4">Step 2: Create Case</h2>
+                    <div class="grid grid-cols-2 gap-4">
+                        <input type="text" id="clientId" placeholder="Client ID (from step 1)"
+                               class="p-2 border rounded">
+                        <input type="text" id="caseName" placeholder="Enter case name"
+                               class="p-2 border rounded">
+                    </div>
+                    <button id="createCaseBtn"
+                            class="mt-4 bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
+                        Create Case
+                    </button>
+                    <div id="caseResult" class="mt-2 text-sm"></div>
+                </div>
+
+                <!-- Step 3: Upload Documents -->
+                <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+                    <h2 class="text-xl font-semibold mb-4">Step 3: Upload Documents & Start Run</h2>
+                    <div class="grid grid-cols-2 gap-4 mb-4">
+                        <input type="text" id="caseIdForRun" placeholder="Case ID (from step 2)"
+                               class="p-2 border rounded">
+                        <input type="file" id="fileInput" multiple accept=".pdf,.txt,.doc,.docx"
+                               class="p-2 border rounded">
+                    </div>
+                    <button id="startRunBtn"
+                            class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">
+                        Start Processing Run
+                    </button>
+                    <div id="uploadResult" class="mt-2 text-sm"></div>
+                </div>
+
+                <!-- Recent Runs -->
+                <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-xl font-semibold">Recent Runs</h2>
+                        <button id="refreshRunsBtn"
+                                class="bg-gray-500 text-white px-3 py-1 rounded text-sm hover:bg-gray-600">
+                            Refresh
+                        </button>
+                    </div>
+                    <div id="runsList" class="space-y-2"></div>
+                </div>
+
+                <!-- Events Display -->
+                <div id="eventsSection" class="bg-white rounded-lg shadow-md p-6 hidden">
+                    <h2 class="text-xl font-semibold mb-4">Extracted Events</h2>
+                    <div id="eventsContent"></div>
+                </div>
+            </div>
+        </div>
+    </div>
 </body>
 </html>
