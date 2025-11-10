@@ -17,7 +17,7 @@ This validates Phase 3 P1 fix: Unified /v1/providers handler
 import os
 import pytest
 from datetime import datetime
-from unittest.mock import MagicMock
+from unittest.mock import patch, MagicMock
 
 # Set required environment variables BEFORE importing app
 # This prevents RuntimeError during app initialization
@@ -30,10 +30,14 @@ os.environ.setdefault("MINIO_ENDPOINT", "localhost:9000")
 os.environ.setdefault("MINIO_BUCKET", "test-legal-documents")
 os.environ.setdefault("MINIO_SECURE", "false")
 
-from fastapi.testclient import TestClient
+# Mock Redis event processor BEFORE importing app
+# Prevents real Redis connection during app lifespan startup
+with patch('api.event_processor.start_event_processor'), \
+     patch('api.event_processor.stop_event_processor'):
+    from fastapi.testclient import TestClient
 
-# Import the FastAPI app AFTER setting environment variables
-from api.main import app
+    # Import the FastAPI app AFTER setting environment variables and mocks
+    from api.main import app
 
 # Create test client (runs in-process, no external server needed)
 client = TestClient(app)
