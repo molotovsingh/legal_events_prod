@@ -162,10 +162,10 @@
    - ✅ Frontend updated to use new endpoint (eliminates N+1 query problem)
    - ✅ Pagination controls in UI (Previous/Next buttons)
    - ✅ Verified with manual testing (filtering, pagination, sorting)
-5. [ ] **P2: DeepSeek integration** 🟢 MEDIUM
-   - Wire API key in .env
-   - Verify minimal flow
-   - File tracking issue if not ready
+5. [x] **P2: DeepSeek integration** ⏸️ DEFERRED
+   - **Decision:** Not using DeepSeek for the moment
+   - Existing providers (OpenRouter, Anthropic, OpenAI, LangExtract) are sufficient
+   - Can be revisited in future if needed
 6. [ ] **P2: Documentation polish** 🟢 MEDIUM (MOSTLY DONE)
    - ✅ Brittle line refs already removed (v0.9.1)
    - Finalize provider/model documentation
