@@ -5,6 +5,93 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] - 2025-11-11
+
+### Added
+- GET /v1/runs endpoint with comprehensive filtering and pagination
+  - Filter by client_id, case_id, status
+  - Pagination support (limit, offset, order_by, order)
+  - Efficient single-query implementation eliminates N+1 queries
+- DELETE /v1/runs/{run_id}/artifacts endpoint for artifact management
+  - Authentication required for destructive operations
+  - Enables operational cleanup and testing workflows
+- GitHub Actions CI/CD pipeline
+  - Multi-version Python testing (3.9, 3.10, 3.11, 3.12)
+  - Automated quality gates (Ruff linting + formatting)
+  - Test badge integration in README
+- Comprehensive export API integration tests (test_export_integration.py)
+  - Tests CSV, XLSX, JSON export generation
+  - Validates artifact regeneration logic
+  - 580 lines of new test infrastructure
+- Frontend authentication UI
+  - Login modal with email/password fields
+  - JWT token persistence in localStorage
+  - Automatic token injection via Axios interceptors
+  - 401 response handling with re-authentication flow
+- Frontend UI feature restoration
+  - Export buttons for CSV, XLSX, JSON formats
+  - Document extractor selector (Docling/Qwen3-VL dropdown)
+  - Run details panel with metadata, timing, and cost estimates
+  - SHA256 file hashing for integrity verification
+
+### Security
+- **CRITICAL:** Removed hardcoded admin credentials (admin123)
+  - Environment-based admin provisioning via ADMIN_EMAIL/ADMIN_PASSWORD_HASH
+  - Production deployments fail hard without proper credentials
+  - Development mode creates non-admin dev@localhost user
+- **HIGH:** Fixed admin provisioning bypass on existing deployments
+  - Admin user creation now runs on every startup
+  - Ensures admin access in all environments
+- **HIGH:** Patched XSS vulnerabilities in frontend
+  - Replaced innerHTML with secure DOM manipulation
+  - Integrated DOMPurify for HTML sanitization
+  - Removed onclick handlers, using addEventListener
+- **HIGH:** Hardened JWT secret key handling
+  - Removed development fallback for JWT_SECRET_KEY
+  - Added minimum entropy validation (32 bytes / 64 hex chars)
+  - All environments now require secure JWT secret
+- **MEDIUM:** Fixed information disclosure in API error responses
+  - Generic error messages with correlation IDs
+  - Full error details retained in server logs
+- Fixed Content Security Policy violations
+  - Moved 743 lines of inline JavaScript to external app.js
+  - CSP now properly allows API connections (connect-src)
+  - No more browser blocking of application logic
+- Fixed authentication bypass on DELETE /v1/runs/{run_id}/artifacts
+  - All destructive operations now require authentication
+  - Prevents unauthorized artifact deletion
+
+### Fixed
+- Negative pending document count in GET /v1/runs list
+  - Applied max(0, ...) clamping for race condition handling
+  - Consistent with single run endpoint implementation
+- Test isolation issues preventing CI execution
+  - Converted to FastAPI TestClient (no external services)
+  - Proper pytest fixtures with module scope
+  - Zero Redis/MinIO/PostgreSQL dependencies for provider tests
+- Frontend authentication field name mismatch
+  - Changed login request from username to email field
+  - Fixed bcrypt hash validation errors
+- Invalid bcrypt password hash for dev user
+  - Replaced corrupted hash with valid bcrypt hash
+  - Development login now works with dev@localhost/devpass123
+
+### Changed
+- Frontend architecture refactored for security
+  - All JavaScript moved from inline to external app.js (743 lines)
+  - frontend/index.html reduced from 1,600+ to ~700 lines
+  - Clean HTML structure with proper CSP compliance
+- Test infrastructure improved
+  - 14 fully isolated provider endpoint tests
+  - Module-scoped mocks prevent leakage
+  - Air-gapped CI execution capability
+
+### Documentation
+- Updated README.md with Phase 3 completion status (83%)
+- Enhanced LEGAL_EVENTS_CODE_MAP.md with new endpoints
+- Added GRANITE_INTEGRATION_RESEARCH.md (351 lines)
+- Marked DeepSeek integration as deferred (4 providers sufficient)
+
 ## [0.9.2] - 2025-11-10
 
 ### Fixed
@@ -264,6 +351,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Version History Summary
 
+- **v0.10.x** - Security hardening + API enhancements + UI restoration
 - **v0.9.x** - Worker heartbeat monitoring and testing infrastructure
 - **v0.8.x** - Worker health monitoring with auto-restart
 - **v0.7.x** - Multi-provider document extraction with UI selection
