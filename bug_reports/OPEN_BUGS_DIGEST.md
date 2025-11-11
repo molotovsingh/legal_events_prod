@@ -1,22 +1,93 @@
 # Open Bugs Digest
 
-Updated: 2025-11-08 07:30:00Z (UTC)
+Updated: 2025-11-11 02:53:14Z (UTC)
 
 Purpose: Snapshot of open issues with priorities, suggested owners, and references to full reports.
 
 ---
 
-## 🎉 ALL CRITICAL ISSUES RESOLVED
+## ⚠️ NEW CRITICAL ISSUES DETECTED (2025-11-11)
 
-**Status:** No open bug reports remaining. All P0 and P1 issues have been resolved.
+**Status:** 9 new bugs found in code audit. 3 are production-critical.
 
-- **P0 Blockers:** 2/2 resolved ✅
-- **P1 Major Issues:** 5/5 resolved ✅
-- **P2 Minor Issues:** All resolved ✅
+- **P0 Critical:** 3 open ❌
+- **P1 Major:** 3 open ⚠️
+- **P2 Minor:** 3 open 📝
 
-**Latest Fixes (2025-11-08):**
-- 5 critical security & reliability issues (PR #2, commit 5a3a4fb)
-- All production-readiness issues verified operational
+**Latest Report (2025-11-11):**
+- BUG_REPORT_20251111T025314Z.md — Resource leaks, None type errors, shutdown issues
+- Impact: Redis connection pool exhaustion, process crashes, graceful shutdown failures
+
+---
+
+## P0 — Critical (NEW)
+
+- **Redis health check connection leak** (api/main.py:155–162)
+  - Symptom: Calling `/health` repeatedly when Redis unavailable leaks connections
+  - Impact: Redis connection pool exhaustion under sustained health checks
+  - Fix: Wrap Redis operations in try/finally; ensure r.close() in both paths
+  - Effort: 10 minutes
+  - Report: BUG_REPORT_20251111T025314Z.md
+
+- **Redis retry endpoint connection leak** (api/main.py:904–913)
+  - Symptom: Early return on cache hit bypasses r.close(); exception handler also missing cleanup
+  - Impact: Each successful cache lookup leaks a connection
+  - Fix: Use finally block; move r.close() outside conditional branches
+  - Effort: 10 minutes
+  - Report: BUG_REPORT_20251111T025314Z.md
+
+- **None type error in export function** (worker/tasks.py:397–399)
+  - Symptom: Missing null check on case/client queries; AttributeError on missing foreign key
+  - Impact: Export crashes if case or client deleted; silent process termination
+  - Fix: Add explicit `if not case:` and `if not client:` guards with error logging
+  - Effort: 15 minutes
+  - Report: BUG_REPORT_20251111T025314Z.md
+
+## P1 — Major (NEW)
+
+- **MinioStorage resource leak in process_run** (worker/tasks.py:76–77)
+  - Symptom: Storage instance created but never closed; long-running workers accumulate connections
+  - Impact: Eventually exhausts MinIO connection pool on sustained processing
+  - Fix: Implement MinioStorage.close() method; call in finally block
+  - Effort: 30 minutes
+  - Report: BUG_REPORT_20251111T025314Z.md
+
+- **Event consumer infinite loop blocks shutdown** (infra/worker_events.py:213–219)
+  - Symptom: pubsub.listen() blocks indefinitely; stop() cannot interrupt the loop
+  - Impact: Application shutdown delayed >5 seconds; worker thread hangs
+  - Fix: Add self.running flag; check in loop before processing; break on stop()
+  - Effort: 20 minutes
+  - Report: BUG_REPORT_20251111T025314Z.md
+
+- **Silent error swallowing in event consumer** (infra/worker_events.py:216–219)
+  - Symptom: Failed event parsing logged but not queued to DLQ; events lost permanently
+  - Impact: API/worker state divergence; events processed by neither service
+  - Fix: Integrate with Redis DLQ (already exists in api/event_processor.py:31)
+  - Effort: 25 minutes
+  - Report: BUG_REPORT_20251111T025314Z.md
+
+## P2 — Minor (NEW)
+
+- **Race condition in document status updates** (api/event_processor.py:228–234)
+  - Symptom: No locking on concurrent reads/writes; concurrent retry events could lose updates
+  - Impact: Document state becomes inconsistent under concurrent retries
+  - Fix: Add optimistic locking with version column or row-level lock
+  - Effort: 1–2 hours
+  - Report: BUG_REPORT_20251111T025314Z.md
+
+- **Cleanup function aborts on storage error** (worker/tasks.py:507–516)
+  - Symptom: storage.list_objects() failure causes entire cleanup job to fail
+  - Impact: Remaining old runs not cleaned up; disk/storage leak
+  - Fix: Wrap per-run storage operations in try/except; continue on error
+  - Effort: 20 minutes
+  - Report: BUG_REPORT_20251111T025314Z.md
+
+- **Blocking event consumer in application shutdown** (api/main.py + infra/worker_events.py)
+  - Symptom: pubsub.listen() blocks thread; shutdown timeout may expire before graceful exit
+  - Impact: Slow application shutdown; potential resource leaks on restart
+  - Fix: Implement signal-based loop break; reduce blocking time
+  - Effort: 30 minutes (refactor)
+  - Report: BUG_REPORT_20251111T025314Z.md
 
 ---
 

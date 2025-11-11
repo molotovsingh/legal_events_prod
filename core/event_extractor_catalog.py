@@ -52,13 +52,13 @@ _EVENT_EXTRACTOR_REGISTRY: List[EventExtractorEntry] = [
     # === PRIMARY PROVIDERS ===
 
     EventExtractorEntry(
-        provider_id="langextract",
+        provider_id="google",
         display_name="Gemini",
         enabled=True,
         factory_callable="core.extractor_factory._create_langextract_event_extractor",
         supports_runtime_model=True,  # Supports model_id override (gemini-2.0-flash, gemini-2.5-pro)
         recommended=True,
-        notes="Google Gemini 2.0 Flash. Default provider. Fast, accurate, budget-friendly.",
+        notes="Google Gemini 2.0 Flash. Default provider via LangExtract. Fast, accurate, budget-friendly.",
         documentation_url="https://ai.google.dev/gemini-api/docs",
     ),
 
@@ -106,17 +106,6 @@ _EVENT_EXTRACTOR_REGISTRY: List[EventExtractorEntry] = [
         recommended=False,
         notes="DeepSeek R1. Budget reasoning model via OpenAI-compatible API.",
         documentation_url="https://platform.deepseek.com/api-docs",
-    ),
-
-    EventExtractorEntry(
-        provider_id="google",
-        display_name="Google Gemini (Direct API)",
-        enabled=True,  # Enabled for internal use (adapter switching from langextract)
-        factory_callable="core.extractor_factory._create_google_event_extractor",
-        supports_runtime_model=True,  # Supports model_id override (gemini-2.0-flash, gemini-2.5-flash, gemini-2.5-pro)
-        recommended=False,  # Not recommended in UI - use 'Gemini' provider instead
-        notes="Direct Google Gemini API (internal adapter). Access via 'Gemini' provider with model selector.",
-        documentation_url="https://ai.google.dev/gemini-api/docs",
     ),
 
     EventExtractorEntry(

@@ -12,6 +12,7 @@ services:
       - ./api:/app/api
       - ./infra:/app/infra
       - ./core:/app/core
+      - ./frontend:/app/frontend
     # Use non-detached mode for debugging
     environment:
       PYTHONUNBUFFERED: 1

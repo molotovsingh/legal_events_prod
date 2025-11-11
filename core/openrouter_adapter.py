@@ -58,10 +58,10 @@ class OpenRouterEventExtractor:
             )
 
         # Check if model supports native JSON mode
-        self._supports_json_mode = self._check_json_mode_support(config.active_model)
+        self._supports_json_mode = self._check_json_mode_support(config.model)
         if not self._supports_json_mode:
             logger.info(
-                f"ℹ️  Model {config.active_model} will use prompt-based JSON (no native response_format support). "
+                f"ℹ️  Model {config.model} will use prompt-based JSON (no native response_format support). "
                 f"This is normal for many OSS models."
             )
 
@@ -73,13 +73,7 @@ class OpenRouterEventExtractor:
                 timeout=config.timeout
             )
             self.available = True
-
-            # Log which model is being used (runtime override or env default)
-            active_model = config.active_model
-            if config.runtime_model:
-                logger.info(f"✅ OpenRouterEventExtractor initialized with runtime model: {active_model} (overriding env default: {config.model})")
-            else:
-                logger.info(f"✅ OpenRouterEventExtractor initialized with model: {active_model}")
+            logger.info(f"✅ OpenRouterEventExtractor initialized with model: {config.model}")
         except Exception as e:
             logger.warning(f"⚠️ OpenAI SDK not available - OpenRouter adapter will be disabled: {e}")
             self.available = False
@@ -168,7 +162,7 @@ class OpenRouterEventExtractor:
         try:
             # Build request parameters
             params = {
-                "model": self.config.active_model,  # Use active_model (runtime override or env default)
+                "model": self.config.model,
                 "messages": messages,
                 "temperature": 0.0,
             }
@@ -280,7 +274,7 @@ class OpenRouterEventExtractor:
                 # Create EventRecord with OpenRouter-specific attributes
                 attributes = {
                     "provider": "openrouter",
-                    "model": self.config.active_model,  # Use active_model (runtime override or env default)
+                    "model": self.config.model,
                     "original_response": event_data
                 }
 
@@ -343,7 +337,7 @@ class OpenRouterEventExtractor:
                         if isinstance(event_data, dict) and event_data.get("event_particulars"):
                             attributes = {
                                 "provider": "openrouter",
-                                "model": self.config.active_model,
+                                "model": self.config.model,
                                 "parsing_strategy": "fallback_regex_json",
                                 "original_response": event_data
                             }

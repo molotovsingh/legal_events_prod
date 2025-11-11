@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Legal Events v2 - Test Interface</title>
     <!-- Content Security Policy - allows external scripts from same origin -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.tailwindcss.com https://unpkg.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; img-src 'self' data:;">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' http://localhost:8000; script-src 'self' https://cdn.tailwindcss.com https://unpkg.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; img-src 'self' data:; font-src 'self';">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
     <!-- DOMPurify for HTML sanitization -->
@@ -72,17 +72,26 @@
                 <div class="mt-2">
                     <div class="mb-4">
                         <label class="block text-sm font-medium text-gray-700 mb-2">Email</label>
-                        <input type="email" id="loginEmail"
+                        <input type="email" id="loginEmail" value="dev@localhost"
                                class="w-full p-2 border rounded focus:ring-blue-500 focus:border-blue-500"
-                               placeholder="admin@example.com">
+                               placeholder="dev@localhost">
                     </div>
                     <div class="mb-4">
                         <label class="block text-sm font-medium text-gray-700 mb-2">Password</label>
                         <input type="password" id="loginPassword"
                                class="w-full p-2 border rounded focus:ring-blue-500 focus:border-blue-500"
-                               placeholder="Password">
+                               placeholder="devpass123">
                     </div>
                     <div id="loginError" class="text-red-600 text-sm mb-4 hidden"></div>
+                    
+                    <!-- Development credentials help box -->
+                    <div class="bg-blue-50 border border-blue-200 rounded p-3 text-sm text-gray-700 mb-4">
+                        <p class="font-medium text-blue-800 mb-1">Development Credentials:</p>
+                        <p class="font-mono text-xs">Email: dev@localhost</p>
+                        <p class="font-mono text-xs">Password: devpass123</p>
+                        <p class="text-xs text-gray-600 mt-2 italic">Case-sensitive, no spaces</p>
+                    </div>
+                    
                     <div class="flex justify-end space-x-2">
                         <button id="cancelLoginBtn"
                                 class="px-4 py-2 bg-gray-300 text-gray-800 rounded hover:bg-gray-400">
@@ -92,11 +101,6 @@
                                 class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">
                             Login
                         </button>
-                    </div>
-                    <div class="mt-4 text-xs text-gray-600">
-                        <p>Default credentials for development:</p>
-                        <p>Email: dev@localhost</p>
-                        <p>Password: devpass123</p>
                     </div>
                 </div>
             </div>
@@ -120,9 +124,24 @@
 
             <!-- Main Content (disabled when not authenticated) -->
             <div id="mainContent">
-                <!-- Provider Selection -->
+                <!-- Document Parsing Settings -->
                 <div class="bg-white rounded-lg shadow-md p-6 mb-6">
-                    <h2 class="text-xl font-semibold mb-4">Provider Settings</h2>
+                    <h2 class="text-xl font-semibold mb-4">Document Parsing Settings</h2>
+                    <div class="mb-2">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                            Document Extractor (OCR/Vision)
+                        </label>
+                        <select id="docExtractorSelect" class="w-full p-2 border rounded">
+                            <option value="docling">Docling (Local OCR) - FREE</option>
+                            <option value="qwen_vl">Qwen3-VL (Vision API) - $0.077/15 pages (for poor scans)</option>
+                        </select>
+                        <p class="text-xs text-gray-500 mt-1">Step 1: Parse PDF documents to extract text and structure</p>
+                    </div>
+                </div>
+
+                <!-- Event Extraction Settings -->
+                <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+                    <h2 class="text-xl font-semibold mb-4">Event Extraction Settings</h2>
                     <div class="grid grid-cols-2 gap-4">
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-2">
@@ -141,11 +160,12 @@
                             </select>
                         </div>
                     </div>
+                    <p class="text-xs text-gray-500 mt-2">Step 2: Extract legal events from parsed documents using LLM</p>
                 </div>
 
-                <!-- Step 1: Create Client -->
+                <!-- Step 3: Create Client -->
                 <div class="bg-white rounded-lg shadow-md p-6 mb-6">
-                    <h2 class="text-xl font-semibold mb-4">Step 1: Create Client</h2>
+                    <h2 class="text-xl font-semibold mb-4">Step 3: Create Client</h2>
                     <div class="flex space-x-4">
                         <input type="text" id="clientName" placeholder="Enter client name"
                                class="flex-1 p-2 border rounded">
@@ -157,11 +177,11 @@
                     <div id="clientResult" class="mt-2 text-sm"></div>
                 </div>
 
-                <!-- Step 2: Create Case -->
+                <!-- Step 4: Create Case -->
                 <div class="bg-white rounded-lg shadow-md p-6 mb-6">
-                    <h2 class="text-xl font-semibold mb-4">Step 2: Create Case</h2>
+                    <h2 class="text-xl font-semibold mb-4">Step 4: Create Case</h2>
                     <div class="grid grid-cols-2 gap-4">
-                        <input type="text" id="clientId" placeholder="Client ID (from step 1)"
+                        <input type="text" id="clientId" placeholder="Client ID (from step 3)"
                                class="p-2 border rounded">
                         <input type="text" id="caseName" placeholder="Enter case name"
                                class="p-2 border rounded">
@@ -173,11 +193,11 @@
                     <div id="caseResult" class="mt-2 text-sm"></div>
                 </div>
 
-                <!-- Step 3: Upload Documents -->
+                <!-- Step 5: Upload Documents -->
                 <div class="bg-white rounded-lg shadow-md p-6 mb-6">
-                    <h2 class="text-xl font-semibold mb-4">Step 3: Upload Documents & Start Run</h2>
+                    <h2 class="text-xl font-semibold mb-4">Step 5: Upload Documents & Start Run</h2>
                     <div class="grid grid-cols-2 gap-4 mb-4">
-                        <input type="text" id="caseIdForRun" placeholder="Case ID (from step 2)"
+                        <input type="text" id="caseIdForRun" placeholder="Case ID (from step 4)"
                                class="p-2 border rounded">
                         <input type="file" id="fileInput" multiple accept=".pdf,.txt,.doc,.docx"
                                class="p-2 border rounded">
@@ -201,9 +221,30 @@
                     <div id="runsList" class="space-y-2"></div>
                 </div>
 
+                <!-- Run Details Panel -->
+                <div id="runDetails" class="bg-white rounded-lg shadow-md p-6 mb-6 hidden">
+                    <h2 class="text-xl font-semibold mb-4">📄 Run Details</h2>
+                    <div id="runDetailsContent"></div>
+                </div>
+
                 <!-- Events Display -->
                 <div id="eventsSection" class="bg-white rounded-lg shadow-md p-6 hidden">
                     <h2 class="text-xl font-semibold mb-4">Extracted Events</h2>
+                    <!-- Export Buttons -->
+                    <div class="mb-4 space-x-2">
+                        <button id="exportCsvBtn"
+                                class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">
+                            Export CSV
+                        </button>
+                        <button id="exportXlsxBtn"
+                                class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
+                            Export Excel
+                        </button>
+                        <button id="exportJsonBtn"
+                                class="bg-purple-500 text-white px-4 py-2 rounded hover:bg-purple-600">
+                            Export JSON
+                        </button>
+                    </div>
                     <div id="eventsContent"></div>
                 </div>
             </div>

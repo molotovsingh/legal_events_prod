@@ -86,7 +86,7 @@ class LangExtractConfig:
     """
 
     # Model and API settings
-    model_id: str = field(default_factory=lambda: os.getenv("GEMINI_MODEL_ID", DEFAULT_MODEL))
+    model: str = field(default_factory=lambda: os.getenv("GEMINI_MODEL", DEFAULT_MODEL))
     temperature: float = field(default_factory=lambda: env_float("LANGEXTRACT_TEMPERATURE", 0.0))
     max_workers: int = field(default_factory=lambda: env_int("LANGEXTRACT_MAX_WORKERS", 10))
     debug: bool = field(default_factory=lambda: env_bool("LANGEXTRACT_DEBUG", False))
@@ -96,25 +96,15 @@ class LangExtractConfig:
 class OpenRouterConfig:
     """Configuration for OpenRouter API operations
 
-    Supports runtime model override for per-request model selection.
-    The active_model property returns runtime_model if set, otherwise falls back to env default.
-
-    Default model: openai/gpt-oss-120b (OSS, Apache 2.0, self-hostable)
+    Default model: meta-llama/llama-3.3-70b-instruct (standardized across system)
+    Model can be overridden per-request by setting config.model before extraction.
     """
 
     # API settings
     api_key: str = field(default_factory=lambda: env_str("OPENROUTER_API_KEY", ""))
     base_url: str = field(default_factory=lambda: env_str("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"))
-    model: str = field(default_factory=lambda: env_str("OPENROUTER_MODEL", "openai/gpt-oss-120b"))  # OSS default
+    model: str = field(default_factory=lambda: env_str("OPENROUTER_MODEL", "meta-llama/llama-3.3-70b-instruct"))
     timeout: int = field(default_factory=lambda: env_int("OPENROUTER_TIMEOUT", 30))
-
-    # Runtime model override (set by UI, takes precedence over env var)
-    runtime_model: Optional[str] = None
-
-    @property
-    def active_model(self) -> str:
-        """Return the active model: runtime override if set, else env default"""
-        return self.runtime_model or self.model
 
 
 @dataclass
@@ -189,7 +179,7 @@ class GeminiEventConfig:
 
     # API settings
     api_key: str = field(default_factory=lambda: env_str("GEMINI_API_KEY", ""))
-    model_id: str = field(default_factory=lambda: env_str("GEMINI_MODEL_ID", "gemini-2.0-flash"))
+    model: str = field(default_factory=lambda: env_str("GEMINI_MODEL", "gemini-2.0-flash"))
     temperature: float = 0.0
     max_output_tokens: int = 8192
 
@@ -265,68 +255,52 @@ def load_provider_config(
 ) -> Tuple[DoclingConfig, Any, ExtractorConfig]:
     """Load configuration with provider-specific event extractor config.
 
+    Simplified config loading with dictionary dispatch pattern.
+    Removed magic provider swapping - caller specifies exact provider to use.
+
     Args:
-        provider: Event extractor provider type.
+        provider: Event extractor provider type (openrouter, openai, anthropic).
         docling_config: Optional pre-loaded Docling configuration instance.
         extractor_config: Optional extractor configuration instance to update.
-        runtime_model: Optional runtime model override (for OpenRouter multi-model selection).
+        runtime_model: Optional runtime model override for per-request model selection.
 
     Returns:
         Tuple of (DoclingConfig, provider_specific_config, ExtractorConfig) instances.
+
+    Raises:
+        ValueError: If provider is unknown or not enabled.
     """
     docling_config = docling_config or DoclingConfig()
     extractor_config = extractor_config or ExtractorConfig()
 
-    provider_key = (provider or extractor_config.event_extractor or "langextract").strip().lower()
+    # Use openrouter as default (standardized across system)
+    provider_key = (provider or extractor_config.event_extractor or "openrouter").strip().lower()
     extractor_config.event_extractor = provider_key
 
-    if provider_key == "openrouter":
-        event_config = OpenRouterConfig()
-        # Set runtime model override if provided (UI selection takes precedence over env var)
-        if runtime_model:
-            event_config.runtime_model = runtime_model
-    elif provider_key == "opencode_zen":
-        event_config = OpenCodeZenConfig()
-    elif provider_key == "openai":
-        event_config = OpenAIConfig()
-        # Apply runtime model override for ground truth model selection
-        if runtime_model:
-            event_config.model = runtime_model
-    elif provider_key == "anthropic":
-        event_config = AnthropicConfig()
-        # Apply runtime model override for ground truth model selection
-        if runtime_model:
-            event_config.model = runtime_model
-    elif provider_key == "deepseek":
-        event_config = DeepSeekConfig()
-        # Apply runtime model override if needed
-        if runtime_model:
-            event_config.model = runtime_model
-    elif provider_key == "google":
-        event_config = GeminiEventConfig()
-        # Apply runtime model override for Gemini model selection
-        if runtime_model:
-            event_config.model_id = runtime_model
-    else:
-        # Default to langextract (unified Gemini provider)
+    # Dictionary dispatch: provider ID → config class
+    config_registry = {
+        "openrouter": OpenRouterConfig,
+        "openai": OpenAIConfig,
+        "anthropic": AnthropicConfig,
+        "opencode_zen": OpenCodeZenConfig,
+        "deepseek": DeepSeekConfig,
+        "langextract": LangExtractConfig,
+        "google": GeminiEventConfig,
+    }
 
-        # Adapter switching logic for unified Gemini provider:
-        # - If runtime_model is a direct Gemini model ID → use GeminiEventExtractor (simple API)
-        # - If runtime_model is "langextract" or None → use LangExtractEventExtractor (structured)
-        direct_gemini_models = ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash"]
+    # Get config class for provider
+    config_class = config_registry.get(provider_key)
+    if not config_class:
+        raise ValueError(
+            f"Unknown provider '{provider_key}'. "
+            f"Supported providers: {', '.join(config_registry.keys())}"
+        )
 
-        if runtime_model in direct_gemini_models:
-            # Switch to direct Google Gemini adapter for simple API access
-            event_config = GeminiEventConfig()
-            event_config.model_id = runtime_model
-            extractor_config.event_extractor = "google"
-        else:
-            # Use LangExtract adapter for structured few-shot extraction
-            event_config = LangExtractConfig()
-            # If runtime_model=="langextract", use default model (gemini-2.5-flash)
-            # Otherwise, apply the runtime_model override (for backward compatibility)
-            if runtime_model and runtime_model != "langextract":
-                event_config.model_id = runtime_model
-            extractor_config.event_extractor = "langextract"
+    # Instantiate config with defaults from environment
+    event_config = config_class()
+
+    # Apply runtime model override if provided (per-request model selection)
+    if runtime_model:
+        event_config.model = runtime_model
 
     return docling_config, event_config, extractor_config

@@ -53,7 +53,7 @@ class GeminiEventExtractor:
 
             # Create model with JSON mode configuration
             self._model = genai.GenerativeModel(
-                model_name=config.model_id,
+                model_name=config.model,
                 generation_config={
                     "temperature": config.temperature,
                     "max_output_tokens": config.max_output_tokens,
@@ -61,7 +61,7 @@ class GeminiEventExtractor:
                 }
             )
             self.available = True
-            logger.info(f"✅ GeminiEventExtractor initialized with model: {config.model_id}")
+            logger.info(f"✅ GeminiEventExtractor initialized with model: {config.model}")
         except ImportError:
             logger.error("❌ google-generativeai library not available")
             self.available = False
@@ -110,7 +110,7 @@ class GeminiEventExtractor:
 
             logger.info(
                 f"✅ Extracted {len(events)} legal events from {document_name} via Gemini "
-                f"(model: {self.config.model_id})"
+                f"(model: {self.config.model})"
             )
             return events
 
@@ -222,7 +222,7 @@ class GeminiEventExtractor:
                         citation=event.get("citation", DEFAULT_NO_CITATION),
                         document_reference=document_name,
                         attributes={
-                            "model": self.config.model_id,
+                            "model": self.config.model,
                             "temperature": self.config.temperature,
                             "source": "gemini_direct_api"
                         }

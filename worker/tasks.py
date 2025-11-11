@@ -396,7 +396,14 @@ def generate_artifacts(run_id: int) -> Dict[str, str]:
         
         # Get case and client for path
         case = db.query(Case).filter(Case.id == run.case_id).first()
+        if not case:
+            logger.error(f"Case {run.case_id} not found for run {run_id} - cannot generate export")
+            raise ValueError(f"Case {run.case_id} not found for run {run_id}")
+
         client = db.query(Client).filter(Client.id == case.client_id).first()
+        if not client:
+            logger.error(f"Client {case.client_id} not found for case {case.id} - cannot generate export")
+            raise ValueError(f"Client {case.client_id} not found for case {case.id}")
         
         # Prepare data
         data = []

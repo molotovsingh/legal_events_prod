@@ -109,7 +109,7 @@ def populate_initial_data():
                         name="Development User",
                         role=UserRole.REVIEWER,
                         # This is a bcrypt hash for "devpass123" - ONLY for development
-                        password_hash="$2b$12$R5.VmZzYh0x.UqpEEl86OeLzBsT.blHm0M85OpQ9kT3lPPZhAVgCi"
+                        password_hash="$2b$12$Zz7Vn3ayiAteneMKP.rb4OdobvPf6.xGY7UGsFsrh2fWmFs5ikcv2"
                     )
                     db.add(dev_user)
                     logger.info("✅ Development user created: dev@localhost (password: devpass123)")

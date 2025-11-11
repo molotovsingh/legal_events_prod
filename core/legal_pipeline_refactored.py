@@ -84,8 +84,8 @@ class LegalEventsPipeline:
     CACHE_MAX_FILES = 10  # Maximum number of files to keep in cache
 
     def __init__(self, event_extractor: Optional[str] = None, runtime_model: Optional[str] = None, doc_extractor: Optional[str] = None):
-        # Track requested event extractor (default to env)
-        requested_provider = event_extractor or os.getenv("EVENT_EXTRACTOR") or "langextract"
+        # Track requested event extractor (standardized default: openrouter v0.11.0+)
+        requested_provider = event_extractor or os.getenv("EVENT_EXTRACTOR") or "openrouter"
         self.event_extractor_type = requested_provider.strip().lower()
 
         # Track requested document extractor (default to env)
@@ -182,8 +182,8 @@ class LegalEventsPipeline:
 
         # Get credential requirements for this provider
         if provider not in self.PROVIDER_CREDENTIALS:
-            logger.warning(f"⚠️ Unknown provider '{provider}', defaulting to LangExtract validation")
-            provider = 'langextract'
+            logger.warning(f"⚠️ Unknown provider '{provider}', defaulting to OpenRouter validation")
+            provider = 'openrouter'
 
         cred_config = self.PROVIDER_CREDENTIALS[provider]
         env_vars = cred_config['env_vars']

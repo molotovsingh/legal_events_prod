@@ -27,9 +27,10 @@ class LangExtractEventExtractor:
         self.config = config
         self.init_error = None
         try:
-            self.client = LangExtractClient()
+            # Pass model from config to client (supports runtime override)
+            self.client = LangExtractClient(model=config.model)
             self.available = True
-            logger.info("✅ LangExtractEventExtractor initialized")
+            logger.info(f"✅ LangExtractEventExtractor initialized with model: {config.model}")
         except ValueError as e:
             # API key missing - store detailed error for user feedback
             self.init_error = str(e)

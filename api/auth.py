@@ -260,7 +260,7 @@ async def login(
     db: Session
 ) -> dict:
     """
-    Authenticate user and return token
+    Authenticate user and return token with helpful error messages
     
     Args:
         email: User email
@@ -272,16 +272,32 @@ async def login(
     """
     user = db.query(User).filter(User.email == email).first()
     
-    if not user or not verify_password(password, user.password_hash):
+    # Provide helpful feedback for missing user
+    if not user:
+        logger.warning(f"Login attempt for non-existent user: {email}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password"
+            detail=f"No account found for '{email}'. Default development credentials: dev@localhost / devpass123"
+        )
+    
+    # Verify password
+    if not verify_password(password, user.password_hash):
+        logger.warning(f"Failed login attempt for: {email}")
+        
+        # Provide helpful hint for development users
+        hint = ""
+        if email == "dev@localhost":
+            hint = " Default password is 'devpass123' (case-sensitive, no spaces)."
+        
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Incorrect password for '{email}'.{hint}"
         )
     
     if not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Account is disabled"
+            detail=f"Account '{email}' is disabled. Please contact your administrator."
         )
     
     # Create token

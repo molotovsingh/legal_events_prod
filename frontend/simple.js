@@ -1,0 +1,506 @@
+// API configuration
+const API_URL = 'http://localhost:8000';
+
+// State management
+let authToken = localStorage.getItem('jwt_token');
+let currentUser = null;
+let currentRunId = null;
+let pollInterval = null;
+
+// Persistent state (last used IDs)
+let lastClientId = localStorage.getItem('last_client_id');
+let lastCaseId = localStorage.getItem('last_case_id');
+
+// Initialize axios interceptors
+axios.interceptors.request.use(
+    config => {
+        if (authToken) {
+            config.headers.Authorization = `Bearer ${authToken}`;
+        }
+        return config;
+    },
+    error => Promise.reject(error)
+);
+
+axios.interceptors.response.use(
+    response => response,
+    error => {
+        if (error.response && error.response.status === 401) {
+            handleLogout();
+            showLoginModal();
+        }
+        return Promise.reject(error);
+    }
+);
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', async () => {
+    // Load providers first since they don't require auth
+    try {
+        await loadProviders();
+    } catch (error) {
+        console.error('Failed to load providers on page load:', error);
+    }
+    
+    // Then check auth status
+    await checkAuthStatus();
+    initializeQuickStart();
+});
+
+// Authentication functions
+function showLoginModal() {
+    document.getElementById('loginModal').classList.remove('hidden');
+}
+
+function hideLoginModal() {
+    document.getElementById('loginModal').classList.add('hidden');
+}
+
+async function handleLogin() {
+    const email = document.getElementById('loginEmail').value.trim();
+    const password = document.getElementById('loginPassword').value;
+    const errorDiv = document.getElementById('loginError');
+    const loginBtn = document.querySelector('button[onclick="handleLogin()"]');
+
+    errorDiv.classList.add('hidden');
+    errorDiv.textContent = '';
+
+    if (!email || !password) {
+        errorDiv.textContent = 'Email and password required';
+        errorDiv.classList.remove('hidden');
+        return;
+    }
+
+    // Show loading state
+    if (loginBtn) {
+        loginBtn.disabled = true;
+        loginBtn.textContent = 'Logging in...';
+    }
+
+    try {
+        const response = await axios.post(`${API_URL}/v1/auth/login`, {
+            email: email,
+            password: password
+        });
+
+        authToken = response.data.access_token;
+        localStorage.setItem('jwt_token', authToken);
+        currentUser = response.data.user || { email: email };
+
+        hideLoginModal();
+        updateAuthUI();
+        
+        // Load providers after successful login
+        try {
+            await loadProviders();
+        } catch (providerError) {
+            console.error('Failed to load providers after login:', providerError);
+            // Don't fail login if providers fail to load
+        }
+    } catch (error) {
+        errorDiv.textContent = error.response?.data?.detail || 'Login failed';
+        errorDiv.classList.remove('hidden');
+    } finally {
+        // Reset button state
+        if (loginBtn) {
+            loginBtn.disabled = false;
+            loginBtn.textContent = 'Login';
+        }
+    }
+}
+
+function handleLogout() {
+    authToken = null;
+    currentUser = null;
+    localStorage.removeItem('jwt_token');
+    updateAuthUI();
+}
+
+async function checkAuthStatus() {
+    if (!authToken) {
+        showLoginModal();
+        return;
+    }
+
+    try {
+        await axios.get(`${API_URL}/v1/auth/me`);
+        currentUser = { authenticated: true };
+        updateAuthUI();
+    } catch (error) {
+        handleLogout();
+        showLoginModal();
+    }
+}
+
+function updateAuthUI() {
+    const authSection = document.getElementById('authSection');
+    const mainContent = document.getElementById('mainContent');
+
+    if (authToken && currentUser) {
+        authSection.innerHTML = '<button onclick="handleLogout()" class="compact-btn btn-secondary">Logout</button>';
+        mainContent.classList.remove('hidden');
+    } else {
+        authSection.innerHTML = '<button onclick="showLoginModal()" class="compact-btn btn-primary">Login</button>';
+        mainContent.classList.add('hidden');
+    }
+}
+
+// Provider management
+let providersLoaded = false; // Flag to prevent duplicate event listeners
+
+async function loadProviders() {
+    try {
+        const response = await axios.get(`${API_URL}/v1/providers`);
+        const providerSelect = document.getElementById('providerSelect');
+        providerSelect.innerHTML = '';
+
+        response.data.providers.forEach(provider => {
+            const option = document.createElement('option');
+            option.value = provider.provider_id;
+            option.textContent = `${provider.display_name} ${provider.is_working ? '' : '(Limited)'}`;
+            providerSelect.appendChild(option);
+        });
+
+        // Set default and load models
+        if (response.data.providers.length > 0) {
+            const defaultProvider = response.data.providers.find(p => p.recommended) || response.data.providers[0];
+            providerSelect.value = defaultProvider.provider_id;
+            await loadModels(defaultProvider.provider_id);
+        }
+
+        // Add change listener only once
+        if (!providersLoaded) {
+            providerSelect.addEventListener('change', (e) => loadModels(e.target.value));
+            providersLoaded = true;
+        }
+    } catch (error) {
+        console.error('Failed to load providers:', error);
+        // Show error in UI if user is logged in
+        if (authToken) {
+            const providerSelect = document.getElementById('providerSelect');
+            providerSelect.innerHTML = '<option value="">Failed to load providers</option>';
+        }
+    }
+}
+
+async function loadModels(providerKey) {
+    try {
+        const response = await axios.get(`${API_URL}/v1/models?provider=${providerKey}`);
+        const modelSelect = document.getElementById('modelSelect');
+        
+        modelSelect.innerHTML = '';
+        
+        if (response.data.models && response.data.models.length > 0) {
+            response.data.models.forEach(model => {
+                const option = document.createElement('option');
+                option.value = model.model_id;
+                option.textContent = `${model.display_name} ${model.is_recommended ? '⭐' : ''}`;
+                modelSelect.appendChild(option);
+            });
+            
+            // Select the first recommended model, or first model if none recommended
+            const recommendedModel = response.data.models.find(m => m.is_recommended);
+            if (recommendedModel) {
+                modelSelect.value = recommendedModel.model_id;
+            } else if (response.data.models.length > 0) {
+                modelSelect.value = response.data.models[0].model_id;
+            }
+        } else {
+            modelSelect.innerHTML = '<option value="">No models available</option>';
+        }
+    } catch (error) {
+        console.error('Failed to load models:', error);
+        const modelSelect = document.getElementById('modelSelect');
+        modelSelect.innerHTML = '<option value="">Failed to load models</option>';
+    }
+}
+
+// Quick Start functionality
+function initializeQuickStart() {
+    const quickClientId = document.getElementById('quickClientId');
+    const quickCaseId = document.getElementById('quickCaseId');
+    const quickStartBtn = document.getElementById('quickStartBtn');
+    const quickStartBadge = document.getElementById('quickStartBadge');
+
+    if (lastClientId && lastCaseId) {
+        quickClientId.value = lastClientId;
+        quickCaseId.value = lastCaseId;
+        quickStartBtn.disabled = false;
+        quickStartBadge.textContent = 'Ready';
+        quickStartBadge.className = 'status-badge status-success';
+    }
+}
+
+async function quickStartRun() {
+    const caseId = document.getElementById('quickCaseId').value;
+    const files = document.getElementById('quickFileInput').files;
+    const statusDiv = document.getElementById('quickStartStatus');
+
+    if (!caseId || files.length === 0) {
+        statusDiv.innerHTML = '<span class="text-red-600">Case ID and files required</span>';
+        return;
+    }
+
+    await processRun(caseId, files, statusDiv);
+}
+
+// Client/Case creation
+async function createClient() {
+    const clientName = document.getElementById('clientName').value.trim();
+    const statusDiv = document.getElementById('clientStatus');
+
+    if (!clientName) {
+        statusDiv.innerHTML = '<span class="text-red-600">Client name required</span>';
+        return;
+    }
+
+    statusDiv.innerHTML = '<span class="text-blue-600"><span class="spinner"></span> Creating...</span>';
+
+    try {
+        const response = await axios.post(`${API_URL}/v1/clients`, { name: clientName });
+        lastClientId = response.data.id;
+        localStorage.setItem('last_client_id', lastClientId);
+
+        document.getElementById('clientIdForCase').value = lastClientId;
+        statusDiv.innerHTML = `<span class="text-green-600">Created: ID ${lastClientId}</span>`;
+        
+        // Update quick start
+        document.getElementById('quickClientId').value = lastClientId;
+    } catch (error) {
+        statusDiv.innerHTML = `<span class="text-red-600">Error: ${error.response?.data?.detail || 'Failed'}</span>`;
+    }
+}
+
+async function createCase() {
+    const clientId = document.getElementById('clientIdForCase').value;
+    const caseName = document.getElementById('caseName').value.trim();
+    const statusDiv = document.getElementById('caseStatus');
+
+    if (!clientId || !caseName) {
+        statusDiv.innerHTML = '<span class="text-red-600">Client ID and case name required</span>';
+        return;
+    }
+
+    statusDiv.innerHTML = '<span class="text-blue-600"><span class="spinner"></span> Creating...</span>';
+
+    try {
+        const response = await axios.post(`${API_URL}/v1/cases`, {
+            client_id: parseInt(clientId),
+            name: caseName
+        });
+        lastCaseId = response.data.id;
+        localStorage.setItem('last_case_id', lastCaseId);
+
+        document.getElementById('caseIdForRun').value = lastCaseId;
+        statusDiv.innerHTML = `<span class="text-green-600">Created: ID ${lastCaseId}</span>`;
+        
+        // Update quick start
+        document.getElementById('quickCaseId').value = lastCaseId;
+        document.getElementById('quickStartBtn').disabled = false;
+        document.getElementById('quickStartBadge').textContent = 'Ready';
+        document.getElementById('quickStartBadge').className = 'status-badge status-success';
+    } catch (error) {
+        statusDiv.innerHTML = `<span class="text-red-600">Error: ${error.response?.data?.detail || 'Failed'}</span>`;
+    }
+}
+
+async function startRun() {
+    const caseId = document.getElementById('caseIdForRun').value;
+    const files = document.getElementById('fileInput').files;
+    const statusDiv = document.getElementById('uploadStatus');
+
+    if (!caseId || files.length === 0) {
+        statusDiv.innerHTML = '<span class="text-red-600">Case ID and files required</span>';
+        return;
+    }
+
+    await processRun(caseId, files, statusDiv);
+}
+
+// Unified run processing
+async function processRun(caseId, files, statusDiv) {
+    const provider = document.getElementById('providerSelect').value;
+    const model = document.getElementById('modelSelect').value;
+    const docExtractor = document.getElementById('docExtractorSelect').value;
+
+    if (!provider || !model) {
+        statusDiv.innerHTML = '<span class="text-red-600">Provider and model required</span>';
+        return;
+    }
+
+    statusDiv.innerHTML = '<span class="text-blue-600"><span class="spinner"></span> Uploading...</span>';
+
+    try {
+        // Upload files
+        const formData = new FormData();
+        for (let file of files) {
+            formData.append('files', file);
+        }
+
+        const uploadResponse = await axios.post(
+            `${API_URL}/v1/cases/${caseId}/documents`,
+            formData,
+            { headers: { 'Content-Type': 'multipart/form-data' } }
+        );
+
+        const documentIds = uploadResponse.data.map(doc => doc.id);
+        statusDiv.innerHTML = `<span class="text-blue-600"><span class="spinner"></span> Starting processing...</span>`;
+
+        // Start run
+        const runResponse = await axios.post(`${API_URL}/v1/runs`, {
+            case_id: parseInt(caseId),
+            document_ids: documentIds,
+            event_extractor_key: provider,
+            model_name: model,
+            doc_extractor_key: docExtractor
+        });
+
+        currentRunId = runResponse.data.id;
+        statusDiv.innerHTML = `<span class="text-green-600">Run ${currentRunId} started</span>`;
+
+        // Show results section and start polling
+        showResults();
+        startPolling();
+    } catch (error) {
+        statusDiv.innerHTML = `<span class="text-red-600">Error: ${error.response?.data?.detail || 'Failed'}</span>`;
+    }
+}
+
+// Results display
+function showResults() {
+    const resultsSection = document.getElementById('resultsSection');
+    resultsSection.classList.remove('hidden');
+    resultsSection.scrollIntoView({ behavior: 'smooth' });
+}
+
+async function refreshResults() {
+    if (!currentRunId) return;
+
+    try {
+        const response = await axios.get(`${API_URL}/v1/runs/${currentRunId}`);
+        const run = response.data;
+
+        const resultsBadge = document.getElementById('resultsBadge');
+        const resultsContent = document.getElementById('resultsContent');
+        const exportButtons = document.getElementById('exportButtons');
+
+        // Update badge
+        if (run.status === 'completed') {
+            resultsBadge.textContent = 'Completed';
+            resultsBadge.className = 'status-badge status-success';
+            stopPolling();
+            exportButtons.classList.remove('hidden');
+        } else if (run.status === 'failed') {
+            resultsBadge.textContent = 'Failed';
+            resultsBadge.className = 'status-badge status-error';
+            stopPolling();
+        } else {
+            resultsBadge.textContent = 'Processing';
+            resultsBadge.className = 'status-badge status-processing';
+        }
+
+        // Display summary
+        let html = `
+            <div class="text-xs space-y-1 mb-3">
+                <div><strong>Run ID:</strong> ${run.id}</div>
+                <div><strong>Status:</strong> ${run.status}</div>
+                <div><strong>Documents:</strong> ${run.documents?.length || 0}</div>
+        `;
+
+        if (run.run_metadata) {
+            if (run.run_metadata.total_seconds) {
+                html += `<div><strong>Processing Time:</strong> ${run.run_metadata.total_seconds.toFixed(1)}s</div>`;
+            }
+            if (run.run_metadata.cost_usd) {
+                html += `<div><strong>Cost:</strong> $${run.run_metadata.cost_usd.toFixed(4)}</div>`;
+            }
+        }
+
+        html += '</div>';
+
+        // Fetch and display events
+        if (run.status === 'completed') {
+            const eventsResponse = await axios.get(`${API_URL}/v1/runs/${currentRunId}/events`);
+            const events = eventsResponse.data;
+
+            if (events.length > 0) {
+                html += `<div class="text-xs"><strong>Events Extracted:</strong> ${events.length}</div>`;
+                html += '<div class="mt-2 overflow-x-auto"><table class="w-full text-xs border-collapse">';
+                html += '<thead><tr class="border-b bg-gray-50">';
+                html += '<th class="p-2 text-left">Type</th><th class="p-2 text-left">Date</th><th class="p-2 text-left">Description</th>';
+                html += '</tr></thead><tbody>';
+
+                events.slice(0, 10).forEach(event => {
+                    html += `<tr class="border-b">
+                        <td class="p-2">${event.event_type || 'N/A'}</td>
+                        <td class="p-2">${event.event_date || 'N/A'}</td>
+                        <td class="p-2">${(event.description || '').substring(0, 60)}...</td>
+                    </tr>`;
+                });
+
+                html += '</tbody></table></div>';
+                
+                if (events.length > 10) {
+                    html += `<div class="text-xs text-gray-500 mt-2">Showing 10 of ${events.length} events. Export for full data.</div>`;
+                }
+            } else {
+                html += '<div class="text-xs text-gray-500 mt-2">No events extracted</div>';
+            }
+        }
+
+        resultsContent.innerHTML = html;
+    } catch (error) {
+        console.error('Failed to refresh results:', error);
+    }
+}
+
+function startPolling() {
+    if (pollInterval) clearInterval(pollInterval);
+    pollInterval = setInterval(refreshResults, 3000);
+    refreshResults();
+}
+
+function stopPolling() {
+    if (pollInterval) {
+        clearInterval(pollInterval);
+        pollInterval = null;
+    }
+}
+
+// Export functionality
+async function exportData(format) {
+    if (!currentRunId) return;
+
+    try {
+        const response = await axios.get(`${API_URL}/v1/runs/${currentRunId}/export/${format}`, {
+            responseType: 'blob'
+        });
+
+        const url = window.URL.createObjectURL(new Blob([response.data]));
+        const link = document.createElement('a');
+        link.href = url;
+        
+        const extensions = { csv: 'csv', xlsx: 'xlsx', json: 'json' };
+        link.setAttribute('download', `events_run_${currentRunId}.${extensions[format]}`);
+        
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+    } catch (error) {
+        alert('Export failed: ' + (error.response?.data?.detail || 'Unknown error'));
+    }
+}
+
+// UI utilities
+function toggleSection(sectionId) {
+    const section = document.getElementById(sectionId);
+    const body = section.querySelector('.section-body');
+    
+    if (body.classList.contains('hidden')) {
+        body.classList.remove('hidden');
+        section.classList.remove('collapsed');
+    } else {
+        body.classList.add('hidden');
+        section.classList.add('collapsed');
+    }
+}

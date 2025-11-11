@@ -187,93 +187,66 @@ def _create_google_event_extractor(
     return GeminiEventExtractor(event_config)
 
 
+# ============================================================================
+# SIMPLIFIED EVENT PROVIDER REGISTRY (v0.11.0+)
+# ============================================================================
+#
+# This registry has been simplified to use direct function references from
+# core.providers instead of complex dynamic introspection.
+#
+# The old _build_event_provider_registry() function (90+ lines) has been
+# replaced with simple dictionary lookup from the unified provider registry.
+
+
+def _wrap_provider_factory(provider):
+    """
+    Adapter wrapper: converts new Provider.factory signature to old factory signature.
+
+    New signature: factory(config) -> EventExtractor
+    Old signature: factory(doc_config, event_config, extractor_config) -> EventExtractor
+
+    This allows gradual migration without breaking existing code.
+    """
+    def wrapper(_doc_config: DoclingConfig, event_config: Any, _extractor_config: ExtractorConfig) -> EventExtractor:
+        return provider.factory(event_config)
+    return wrapper
+
+
 def _build_event_provider_registry() -> Dict[str, Callable[[DoclingConfig, Any, ExtractorConfig], EventExtractor]]:
     """
-    Build event provider registry dynamically from catalog entries.
-
-    This function reads factory_callable strings from the catalog and dynamically
-    imports them to build the registry. Only whitelisted import paths are allowed.
-
-    Strategy:
-    1. Check current module for pre-imported functions FIRST (introspection)
-    2. Fall back to dynamic import only if not found in current module
-    3. Add systematic fallbacks for all pre-imported factories
+    Build event provider registry from core.providers (simplified architecture).
 
     Returns:
-        Dict mapping provider_id to factory function
+        Dict mapping provider_id to factory function (old signature for compatibility)
     """
-    import sys
-    from .event_extractor_catalog import get_event_extractor_catalog
+    from .providers import PROVIDERS
 
-    catalog = get_event_extractor_catalog()
     registry = {}
 
-    # Get reference to current module for introspection
-    current_module = sys.modules[__name__]
+    # Convert new provider registry to old factory signature format
+    for provider_id, provider in PROVIDERS.items():
+        if provider.enabled:
+            registry[provider_id] = _wrap_provider_factory(provider)
+            logger.debug(f"✅ Registered {provider_id} → {provider.name}")
 
-    # Get all enabled extractors with factory callables
-    for entry in catalog.list_extractors(enabled=True):
-        if not entry.factory_callable:
-            logger.debug(f"Skipping {entry.provider_id}: no factory_callable defined")
-            continue
-
-        try:
-            # Security: Validate import path is whitelisted
-            module_path = entry.factory_callable.rsplit('.', 1)[0]
-            if not any(module_path.startswith(prefix) for prefix in _FACTORY_IMPORT_WHITELIST):
-                logger.warning(
-                    f"Skipping {entry.provider_id}: factory_callable '{entry.factory_callable}' "
-                    f"not in whitelist {_FACTORY_IMPORT_WHITELIST}"
-                )
-                continue
-
-            # Extract function name
-            func_name = entry.factory_callable.rsplit('.', 1)[1]
-
-            # Strategy 1: Try to get function from current module first (all are pre-imported)
-            if hasattr(current_module, func_name):
-                factory_func = getattr(current_module, func_name)
-                registry[entry.provider_id] = factory_func
-                logger.debug(f"✅ Registered {entry.provider_id} → {func_name} (from current module)")
-                continue
-
-            # Strategy 2: Fall back to dynamic import if not in current module
-            module_name = entry.factory_callable.rsplit('.', 1)[0]
-            module = importlib.import_module(module_name)
-            factory_func = getattr(module, func_name)
-
-            registry[entry.provider_id] = factory_func
-            logger.debug(f"✅ Registered {entry.provider_id} → {entry.factory_callable} (dynamic import)")
-
-        except (ImportError, AttributeError, ValueError) as e:
-            logger.error(
-                f"❌ Failed to load factory for {entry.provider_id} "
-                f"from '{entry.factory_callable}': {type(e).__name__}: {e}"
-            )
-            continue
-
-    # Fallback: Ensure all pre-imported providers are available
-    # This protects against dynamic import failures in worker runtime environment
-    FALLBACK_FACTORIES = {
+    # Legacy fallbacks (for providers not yet migrated to new registry)
+    legacy_factories = {
         "langextract": _create_langextract_event_extractor,
-        "openrouter": _create_openrouter_event_extractor,
-        "openai": _create_openai_event_extractor,
-        "anthropic": _create_anthropic_event_extractor,
+        "google": _create_google_event_extractor,
         "deepseek": _create_deepseek_event_extractor,
         "opencode_zen": _create_opencode_zen_event_extractor,
-        "google": _create_google_event_extractor,
     }
 
-    for provider_id, factory_func in FALLBACK_FACTORIES.items():
+    for provider_id, factory_func in legacy_factories.items():
         if provider_id not in registry:
-            logger.warning(f"{provider_id} not found in dynamic registry, adding fallback")
             registry[provider_id] = factory_func
+            logger.debug(f"✅ Registered {provider_id} (legacy)")
 
     logger.info(f"🏭 Built event provider registry with {len(registry)} extractors: {list(registry.keys())}")
     return registry
 
 
-# Build registry dynamically from catalog at module load time
+# Build registry at module load time
 EVENT_PROVIDER_REGISTRY = _build_event_provider_registry()
 
 

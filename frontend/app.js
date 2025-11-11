@@ -12,6 +12,9 @@ const purifyConfig = {
 let authToken = localStorage.getItem('jwt_token');
 let currentUser = null;
 
+// Current run tracking for exports
+let currentRunId = null;
+
 // Configure axios to include auth token
 axios.interceptors.request.use(
     config => {
@@ -66,17 +69,23 @@ function hideLoginModal() {
 }
 
 async function handleLogin() {
-    const email = document.getElementById('loginEmail').value;
+    const email = document.getElementById('loginEmail').value.trim();
     const password = document.getElementById('loginPassword').value;
+    const errorDiv = document.getElementById('loginError');
+
+    // Clear previous errors
+    errorDiv.classList.add('hidden');
+    errorDiv.textContent = '';
 
     if (!email || !password) {
-        alert('Please enter both email and password');
+        errorDiv.textContent = '⚠️ Please enter both email and password';
+        errorDiv.classList.remove('hidden');
         return;
     }
 
     try {
         const response = await axios.post(`${API_URL}/v1/auth/login`, {
-            username: email,
+            email: email,
             password: password
         });
 
@@ -94,9 +103,26 @@ async function handleLogin() {
         loadRuns();
 
     } catch (error) {
-        const errorMsg = error.response?.data?.detail || 'Invalid credentials';
-        document.getElementById('loginError').textContent = errorMsg;
-        document.getElementById('loginError').classList.remove('hidden');
+        let errorMsg = '❌ Login failed. Please try again.';
+        
+        if (error.response) {
+            // Server responded with error
+            if (error.response.status === 401) {
+                errorMsg = error.response.data.detail || '❌ Invalid email or password';
+            } else if (error.response.status === 403) {
+                errorMsg = '🚫 Account is disabled. Contact your administrator.';
+            } else {
+                errorMsg = '❌ Server error: ' + (error.response.data.detail || error.response.statusText);
+            }
+        } else if (error.request) {
+            // No response from server
+            errorMsg = '🔌 Cannot connect to server. Please check if the API is running at ' + API_URL;
+        }
+        
+        errorDiv.textContent = errorMsg;
+        errorDiv.classList.remove('hidden');
+        
+        console.error('Login error:', error);
     }
 }
 
@@ -202,6 +228,22 @@ function setupEventListeners() {
             }
         });
     }
+
+    // Export button events
+    const exportCsvBtn = document.getElementById('exportCsvBtn');
+    if (exportCsvBtn) {
+        exportCsvBtn.addEventListener('click', () => exportEvents('csv'));
+    }
+
+    const exportXlsxBtn = document.getElementById('exportXlsxBtn');
+    if (exportXlsxBtn) {
+        exportXlsxBtn.addEventListener('click', () => exportEvents('xlsx'));
+    }
+
+    const exportJsonBtn = document.getElementById('exportJsonBtn');
+    if (exportJsonBtn) {
+        exportJsonBtn.addEventListener('click', () => exportEvents('json'));
+    }
 }
 
 async function loadProviders() {
@@ -212,31 +254,38 @@ async function loadProviders() {
         const response = await axios.get(`${API_URL}/v1/providers`);
         const providers = response.data.providers;
 
-        // Find langextract (working provider)
-        const langextract = providers.find(p => p.id === 'langextract');
-        const others = providers.filter(p => p.id !== 'langextract');
+        // Helper function to calculate status from API fields
+        const getStatus = (provider) => {
+            if (!provider.enabled) return 'disabled';
+            return provider.is_working ? 'available' : 'unavailable';
+        };
 
-        if (langextract && langextract.status === 'available') {
+        // Find openrouter provider (standardized default v0.11.0+)
+        const openrouter = providers.find(p => p.provider_id === 'openrouter');
+        const others = providers.filter(p => p.provider_id !== 'openrouter');
+
+        if (openrouter && getStatus(openrouter) === 'available') {
             const option = document.createElement('option');
-            option.value = langextract.id;
-            option.textContent = `${langextract.name} (${langextract.status})`;
+            option.value = openrouter.provider_id;
+            option.textContent = `${openrouter.name} (${getStatus(openrouter)})`;
             option.selected = true;
             select.appendChild(option);
         }
 
         others.forEach(provider => {
             const option = document.createElement('option');
-            option.value = provider.id;
-            option.textContent = `${provider.name} (${provider.status})`;
-            if (provider.status !== 'available') {
+            option.value = provider.provider_id;
+            const status = getStatus(provider);
+            option.textContent = `${provider.name} (${status})`;
+            if (status !== 'available') {
                 option.disabled = true;
             }
             select.appendChild(option);
         });
 
         // Load models for default provider
-        if (langextract) {
-            loadModels(langextract.id);
+        if (openrouter) {
+            loadModels(openrouter.provider_id);
         }
     } catch (error) {
         console.error('Failed to load providers:', error);
@@ -402,6 +451,7 @@ async function startRun() {
     const files = document.getElementById('fileInput').files;
     const provider = document.getElementById('providerSelect').value;
     const model = document.getElementById('modelSelect').value;
+    const docExtractor = document.getElementById('docExtractorSelect').value;
 
     if (!caseId || files.length === 0) {
         alert('Please enter Case ID and select files');
@@ -419,6 +469,18 @@ async function startRun() {
     uploadResult.appendChild(processingText);
 
     try {
+        // Calculate SHA256 hashes for integrity verification
+        const fileHashes = [];
+        for (let file of files) {
+            try {
+                const hash = await calculateFileSHA256(file);
+                fileHashes.push({ name: file.name, hash: hash });
+                console.log(`File: ${file.name}, SHA256: ${hash}`);
+            } catch (err) {
+                console.warn(`Could not calculate hash for ${file.name}:`, err);
+            }
+        }
+
         // Upload files
         const formData = new FormData();
         for (let file of files) {
@@ -442,8 +504,9 @@ async function startRun() {
         // Start run
         const runResponse = await axios.post(`${API_URL}/v1/runs`, {
             case_id: parseInt(caseId),
-            provider: provider || 'langextract',
+            provider: provider || 'openrouter',  // Standardized default (v0.11.0+)
             model: model || null,
+            doc_extractor: docExtractor || 'docling',
             files: manifest
         });
 
@@ -642,9 +705,85 @@ function updateRunInList(run) {
     }
 }
 
+async function showRunDetails(runId) {
+    try {
+        const response = await axios.get(`${API_URL}/v1/runs/${runId}`);
+        const run = response.data;
+
+        const detailsPanel = document.getElementById('runDetails');
+        const contentDiv = document.getElementById('runDetailsContent');
+
+        // Clear existing content
+        contentDiv.textContent = '';
+
+        // Create details table
+        const detailsTable = document.createElement('table');
+        detailsTable.className = 'w-full text-sm';
+
+        const details = [
+            { label: 'Run ID', value: run.run_id },
+            { label: 'Case ID', value: run.case_id },
+            { label: 'Status', value: run.status },
+            { label: 'Provider', value: run.provider || 'N/A' },
+            { label: 'Model', value: run.model || 'Default' },
+            { label: 'Document Extractor', value: run.doc_extractor || 'docling' },
+            { label: 'Documents', value: run.documents?.length || 0 },
+            { label: 'Events Extracted', value: run.event_count || 0 },
+            { label: 'Created', value: new Date(run.created_at).toLocaleString() },
+            { label: 'Processing Time', value: run.total_seconds ? `${run.total_seconds.toFixed(2)}s` : 'N/A' },
+            { label: 'Estimated Cost', value: run.cost_usd ? `$${run.cost_usd.toFixed(4)}` : 'N/A' }
+        ];
+
+        const tbody = document.createElement('tbody');
+        details.forEach(item => {
+            const tr = document.createElement('tr');
+            tr.className = 'border-b';
+
+            const labelTd = document.createElement('td');
+            labelTd.className = 'py-2 font-medium text-gray-700';
+            labelTd.textContent = item.label + ':';
+
+            const valueTd = document.createElement('td');
+            valueTd.className = 'py-2 pl-4';
+
+            // Special formatting for status
+            if (item.label === 'Status') {
+                const statusSpan = document.createElement('span');
+                statusSpan.className = run.status === 'completed' ? 'text-green-600' :
+                                     run.status === 'failed' ? 'text-red-600' :
+                                     run.status === 'processing' ? 'text-blue-600' :
+                                     'text-gray-600';
+                statusSpan.textContent = item.value;
+                valueTd.appendChild(statusSpan);
+            } else {
+                valueTd.textContent = item.value;
+            }
+
+            tr.appendChild(labelTd);
+            tr.appendChild(valueTd);
+            tbody.appendChild(tr);
+        });
+
+        detailsTable.appendChild(tbody);
+        contentDiv.appendChild(detailsTable);
+
+        // Show the panel
+        detailsPanel.classList.remove('hidden');
+
+    } catch (error) {
+        console.error('Failed to load run details:', error);
+    }
+}
+
 async function viewRun(runId) {
     try {
-        const response = await axios.get(`${API_URL}/v1/events?run_id=${runId}`);
+        // Track current run for exports
+        currentRunId = runId;
+
+        // First get run details
+        await showRunDetails(runId);
+
+        const response = await axios.get(`${API_URL}/v1/runs/${runId}/events`);
         const events = response.data.events;
 
         const contentEl = document.getElementById('eventsContent');
@@ -736,6 +875,51 @@ function createEventsTable(events) {
 
 async function loadEvents(runId) {
     await viewRun(runId);
+}
+
+// File integrity functions
+async function calculateFileSHA256(file) {
+    const arrayBuffer = await file.arrayBuffer();
+    const hashBuffer = await crypto.subtle.digest('SHA-256', arrayBuffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    return hashHex;
+}
+
+// Export functionality
+async function exportEvents(format) {
+    if (!currentRunId) {
+        alert('No run selected');
+        return;
+    }
+
+    try {
+        const response = await axios.get(
+            `${API_URL}/v1/runs/${currentRunId}/export?fmt=${format}`,
+            {
+                responseType: 'blob',
+                headers: {
+                    Authorization: authToken ? `Bearer ${authToken}` : undefined
+                }
+            }
+        );
+
+        // Create blob and download
+        const url = window.URL.createObjectURL(new Blob([response.data]));
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', `run_${currentRunId}_events.${format}`);
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.URL.revokeObjectURL(url);
+    } catch (error) {
+        console.error('Export error:', error);
+        const message = error.response?.status === 401
+            ? 'Authentication required. Please login first.'
+            : `Failed to export events: ${error.message}`;
+        alert(message);
+    }
 }
 
 // Global functions for backward compatibility (but secured)

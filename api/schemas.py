@@ -112,9 +112,10 @@ class UserResponse(BaseModel):
 
 class RunCreate(BaseModel):
     case_id: int
-    provider: Optional[str] = "langextract"
-    model: Optional[str] = "gemini-1.5-flash"
+    provider: Optional[str] = "openrouter"  # Standardized default (v0.11.0+)
+    model: Optional[str] = "meta-llama/llama-3.3-70b-instruct"  # Standardized default (v0.11.0+)
     doc_extractor: Optional[str] = "docling"  # Document extractor: 'docling' or 'qwen_vl'
+    files: Optional[List[Dict[str, Any]]] = None  # Optional file manifest from frontend upload
 
 
 class RunCreateResponse(BaseModel):

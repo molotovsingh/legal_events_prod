@@ -27,10 +27,17 @@ class LangExtractClient:
     Manages API keys, shared examples, and extraction calls
     """
 
-    def __init__(self):
+    def __init__(self, model: str = None):
+        """
+        Initialize LangExtract client.
+
+        Args:
+            model: Optional model override. If not provided, reads from GEMINI_MODEL env var.
+        """
         self.available = LANGEXTRACT_AVAILABLE
         self.api_key = None
-        self.model_id = os.getenv("GEMINI_MODEL_ID", DEFAULT_MODEL)
+        # Use provided model, or fall back to env var (standardized to GEMINI_MODEL in v0.11.0)
+        self.model_id = model or os.getenv("GEMINI_MODEL", os.getenv("GEMINI_MODEL_ID", DEFAULT_MODEL))
 
         if not self.available:
             logger.error("🚨 LangExtract module not available")

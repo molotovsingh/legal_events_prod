@@ -109,7 +109,7 @@ class PipelineMetadata:
     # Configuration (what defines the experiment)
     parser_name: str
     parser_version: Optional[str] = None
-    provider_name: str = 'langextract'
+    provider_name: str = 'google'
     provider_model: Optional[str] = None  # e.g., 'openai/gpt-4o-mini', 'gemini-2.0-flash'
     ocr_engine: Optional[str] = None
     table_mode: Optional[str] = None
@@ -178,47 +178,27 @@ class PipelineMetadata:
             pass
 
         # Provider info
-        provider_name = getattr(pipeline, 'provider', 'langextract')
+        provider_name = getattr(pipeline, 'provider', 'google')
 
-        # Provider model - extract from adapter with proper config access
-        # This supports runtime model overrides (UI selections) over environment defaults
+        # Provider model - simplified extraction with standardized config.model field
         provider_model = None
         try:
             if hasattr(pipeline, 'event_extractor'):
                 extractor = pipeline.event_extractor
-
-                # Strategy 1: config.active_model (OpenRouter pattern with runtime override support)
-                # OpenRouter uses a @property that returns runtime_model if set, else env default
-                if hasattr(extractor, 'config') and hasattr(extractor.config, 'active_model'):
-                    provider_model = extractor.config.active_model
-
-                # Strategy 2: config.model (OpenAI/Anthropic/DeepSeek pattern)
-                # These providers store the model in config.model (includes runtime overrides)
-                elif hasattr(extractor, 'config') and hasattr(extractor.config, 'model'):
+                # All providers now use config.model consistently
+                if hasattr(extractor, 'config') and hasattr(extractor.config, 'model'):
                     provider_model = extractor.config.model
 
-                # Strategy 3: config.model_id (LangExtract/Gemini pattern)
-                # LangExtract uses model_id instead of model for Gemini model identifiers
-                elif hasattr(extractor, 'config') and hasattr(extractor.config, 'model_id'):
-                    provider_model = extractor.config.model_id
-
-                # Fallback: Try direct properties (backward compatibility for old adapters)
-                elif hasattr(extractor, 'model_id'):
-                    provider_model = extractor.model_id
-                elif hasattr(extractor, 'model'):
-                    provider_model = extractor.model
-
-            # Final fallback to environment variables (only if no adapter config found)
+            # Fallback to environment variables if no extractor config found
             if not provider_model:
                 if provider_name == 'openrouter':
-                    provider_model = os.getenv('OPENROUTER_MODEL', 'openai/gpt-4o-mini')
+                    provider_model = os.getenv('OPENROUTER_MODEL', 'meta-llama/llama-3.3-70b-instruct')
                 elif provider_name == 'openai':
                     provider_model = os.getenv('OPENAI_MODEL', 'gpt-4o-mini')
-                elif provider_name == 'langextract':
-                    provider_model = os.getenv('GEMINI_MODEL_ID', 'gemini-2.0-flash')
                 elif provider_name == 'anthropic':
-                    # Fixed: Match config.py default (claude-3-haiku-20240307)
                     provider_model = os.getenv('ANTHROPIC_MODEL', 'claude-3-haiku-20240307')
+                elif provider_name == 'langextract':
+                    provider_model = os.getenv('GEMINI_MODEL', 'gemini-2.0-flash')
                 elif provider_name == 'opencode_zen':
                     provider_model = os.getenv('OPENCODEZEN_MODEL', 'default')
         except Exception:

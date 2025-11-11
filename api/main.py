@@ -6,6 +6,7 @@ Main application entry point with all API routes
 from fastapi import FastAPI, Depends, HTTPException, File, UploadFile, BackgroundTasks, Header, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from typing import List, Optional, Dict, Any
@@ -14,6 +15,7 @@ import os
 from datetime import datetime
 import json
 import uuid
+import hashlib
 from contextlib import asynccontextmanager
 
 # Local imports (we'll create these next)
@@ -63,9 +65,87 @@ async def lifespan(app: FastAPI):
 
     logger.info("✅ Environment variables validated")
 
+    # Validate provider configuration (v0.11.0+)
+    logger.info("🏭 Validating provider configuration...")
+    try:
+        from core.providers import validate_providers_on_startup
+        is_valid, errors = validate_providers_on_startup()
+        if not is_valid:
+            error_msg = f"CRITICAL: Provider validation failed:\n" + "\n".join(f"  - {e}" for e in errors)
+            logger.error(error_msg)
+            logger.warning("⚠️ API will start but some providers may not work. Check environment variables.")
+            # Don't raise - allow API to start but log warnings
+        else:
+            logger.info("✅ All enabled providers validated successfully")
+    except Exception as e:
+        logger.error(f"⚠️ Provider validation error: {e}")
+        logger.warning("⚠️ API will start but provider functionality may be limited")
+
     # Initialize database
     init_db()
     logger.info("✅ Database initialized")
+
+    # Sync model catalog from Python registry to database
+    logger.info("📋 Syncing model catalog to database...")
+    try:
+        from sqlalchemy.orm import sessionmaker
+        from infra.database import engine
+        from infra.models import ModelCatalog as ModelCatalogTable
+        from core.model_catalog import _MODEL_REGISTRY
+
+        Session = sessionmaker(bind=engine)
+        session = Session()
+
+        # Fetch all existing models in one query (optimization: 1 query instead of N)
+        existing_models = session.query(
+            ModelCatalogTable.provider,
+            ModelCatalogTable.model_id
+        ).all()
+        existing_keys = {(m.provider, m.model_id) for m in existing_models}
+
+        logger.info(f"Syncing {len(_MODEL_REGISTRY)} models from Python registry...")
+
+        added = 0
+        updated = 0
+        for model_entry in _MODEL_REGISTRY:
+            key = (model_entry.provider, model_entry.model_id)
+
+            row_data = {
+                "provider": model_entry.provider,
+                "model_id": model_entry.model_id,
+                "display_name": model_entry.display_name,
+                "cost_input_per_million": model_entry.cost_input_per_1m,
+                "cost_output_per_million": model_entry.cost_output_per_1m,
+                "context_window": model_entry.context_window,
+                "supports_json_mode": model_entry.supports_json_mode,
+                "supports_vision": model_entry.supports_vision,
+                "badges": model_entry.badges,
+                "status": model_entry.status.value,
+                "is_recommended": model_entry.recommended,
+            }
+
+            if key in existing_keys:
+                # Update existing model
+                existing = session.query(ModelCatalogTable).filter_by(
+                    provider=model_entry.provider,
+                    model_id=model_entry.model_id
+                ).first()
+                for k, v in row_data.items():
+                    setattr(existing, k, v)
+                updated += 1
+            else:
+                # Insert new model
+                new_model = ModelCatalogTable(**row_data)
+                session.add(new_model)
+                added += 1
+
+        session.commit()
+        logger.info(f"✅ Model catalog synced: {added} added, {updated} updated, {len(_MODEL_REGISTRY)} total")
+        session.close()
+
+    except Exception as e:
+        logger.warning(f"⚠️ Model catalog sync failed (non-fatal): {e}")
+        logger.info("Run 'python scripts/sync_model_catalog.py' to manually sync models")
 
     # Initialize storage
     storage = MinioStorage()
@@ -110,11 +190,15 @@ app = FastAPI(
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:5001"],  # Frontend URLs
+    allow_origins=["http://localhost:3000", "http://localhost:3001", "http://localhost:5001", "http://localhost:8000"],  # Frontend URLs
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Mount static files for frontend (serves index.html, simple.html, app.js, simple.js)
+# Note: This must be done AFTER defining API routes to avoid conflicts
+# The actual mount happens at the end of this file after all routes are defined
 
 
 # ============================================================================
@@ -152,6 +236,7 @@ async def health_check(db: Session = Depends(get_db)):
     storage_status = "healthy" if storage.health_check() else "unhealthy"
     
     # Check Redis (queue)
+    r = None
     try:
         import redis
         r = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379"))
@@ -160,6 +245,9 @@ async def health_check(db: Session = Depends(get_db)):
     except Exception as e:
         logger.error(f"Redis health check failed: {e}")
         queue_status = "unhealthy"
+    finally:
+        if r is not None:
+            r.close()
     
     # Check workers (NEW)
     try:
@@ -228,31 +316,31 @@ async def list_providers(
     }
     """
     try:
-        from core.event_extractor_catalog import get_event_extractor_catalog
-        from core.extractor_factory import EVENT_PROVIDER_REGISTRY
+        # Use new unified provider registry (v0.11.0+)
+        from core.providers import PROVIDERS, list_providers as get_providers_list
 
-        catalog = get_event_extractor_catalog()
+        # Get providers based on enabled filter
+        provider_list = get_providers_list(enabled_only=enabled)
 
-        # Get providers with filters
-        extractors = catalog.list_extractors(
-            enabled=enabled,
-            recommended_only=recommended_only or False
-        )
+        # Apply recommended filter if specified
+        if recommended_only:
+            # For now, mark openrouter as recommended (standardized default)
+            provider_list = [p for p in provider_list if p.id == "openrouter"]
 
         providers = [
             {
-                "provider_id": e.provider_id,
-                "display_name": e.display_name,
-                "name": e.display_name,  # Backward compatibility alias
-                "enabled": e.enabled,
-                "supports_runtime_model": e.supports_runtime_model,
-                "recommended": e.recommended,
-                "notes": e.notes,
-                "documentation_url": e.documentation_url,
-                "is_working": e.provider_id in EVENT_PROVIDER_REGISTRY,  # Runtime validation
+                "provider_id": p.id,
+                "display_name": p.name,
+                "name": p.name,  # Backward compatibility alias
+                "enabled": p.enabled,
+                "supports_runtime_model": p.supports_model_override,
+                "recommended": p.id == "openrouter",  # openrouter is standardized default
+                "notes": p.notes,
+                "documentation_url": p.docs_url,
+                "is_working": p.enabled,  # Enabled = working in new architecture
                 "models": []  # Future: populate from model catalog
             }
-            for e in extractors
+            for p in provider_list
         ]
 
         return {
@@ -283,12 +371,55 @@ async def login_endpoint(
 
     Use this endpoint to obtain a JWT token for authenticated API access.
 
-    **Credentials:**
-    - email: admin@legalevents.local
-    - password: admin123
+    **Development Credentials:**
+    - email: dev@localhost
+    - password: devpass123
     """
     from .auth import login
     return await login(credentials.email, credentials.password, db)
+
+
+@app.post("/v1/auth/dev/reset-password")
+async def dev_reset_password(
+    email: str,
+    new_password: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Development-only password reset endpoint (disabled in production/staging)
+    
+    **Security:** This endpoint is only available in development mode.
+    
+    Usage:
+    ```bash
+    curl -X POST "http://localhost:8000/v1/auth/dev/reset-password?email=dev@localhost&new_password=newpass123"
+    ```
+    """
+    # Security check - only allow in development
+    env_mode = os.getenv("ENVIRONMENT", "development").lower()
+    if env_mode in ["production", "staging"]:
+        raise HTTPException(
+            status_code=403,
+            detail="Password reset endpoint is disabled in production/staging environments"
+        )
+    
+    user = db.query(User).filter(User.email == email).first()
+    if not user:
+        raise HTTPException(
+            status_code=404,
+            detail=f"User not found: {email}"
+        )
+    
+    from api.auth import get_password_hash
+    user.password_hash = get_password_hash(new_password)
+    db.commit()
+    
+    logger.info(f"Password reset for {email} via dev endpoint")
+    
+    return {
+        "message": f"Password reset successful for {email}",
+        "new_password": new_password
+    }
 
 
 # ============================================================================
@@ -416,6 +547,79 @@ async def assign_user_to_case(
 
 
 # ============================================================================
+# File Upload Endpoints
+# ============================================================================
+
+@app.post("/v1/upload")
+async def upload_files(
+    files: List[UploadFile] = File(...),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Upload files temporarily before creating a run.
+
+    This is a compatibility endpoint for the frontend upload flow.
+    Files are uploaded to temporary MinIO storage and can be associated
+    with a run later.
+
+    Args:
+        files: List of files to upload
+        current_user: Authenticated user
+
+    Returns:
+        Dictionary with:
+        - files: List of uploaded file metadata (filename, storage_path, size, sha256)
+        - count: Number of files uploaded
+
+    Requires:
+        - Authentication (JWT token)
+        - At least one file
+    """
+    if not files:
+        raise HTTPException(status_code=400, detail="No files provided")
+
+    storage = MinioStorage()
+    uploaded_files = []
+
+    for file in files:
+        try:
+            # Generate temporary storage key (without run_id yet)
+            temp_key = f"temp/{uuid.uuid4()}/{file.filename}"
+
+            # Read file content
+            file_content = await file.read()
+
+            # Upload to MinIO
+            storage.upload_bytes(temp_key, file_content)
+
+            # Calculate SHA256 hash for integrity verification
+            sha256_hash = hashlib.sha256(file_content).hexdigest()
+
+            uploaded_files.append({
+                "filename": file.filename,
+                "storage_path": temp_key,  # Frontend expects this field
+                "storage_key": temp_key,
+                "size_bytes": len(file_content),
+                "sha256": sha256_hash,
+                "mime_type": file.content_type or "application/pdf"
+            })
+
+            logger.info(f"Uploaded file {file.filename} to temporary storage: {temp_key} (SHA256: {sha256_hash[:16]}...)")
+
+        except Exception as e:
+            logger.error(f"Failed to upload file {file.filename}: {e}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to upload file {file.filename}: {str(e)}"
+            )
+
+    return {
+        "files": uploaded_files,
+        "count": len(uploaded_files)
+    }
+
+
+# ============================================================================
 # Run Management Endpoints
 # ============================================================================
 
@@ -455,6 +659,35 @@ current_user: User = Depends(get_current_user)  # Optional auth for testing
 
     user_email = current_user.email if current_user else "anonymous"
     logger.info(f"Created run {db_run.id} for client {case.client_id} by {user_email}")
+
+    # If files are provided, create documents and enqueue processing job
+    if run.files:
+        for file_info in run.files:
+            # Create document record
+            doc = Document(
+                run_id=db_run.id,
+                case_id=run.case_id,
+                filename=file_info.get("filename"),
+                storage_key=file_info.get("storage_path") or file_info.get("storage_key"),
+                size_bytes=file_info.get("size_bytes", 0),
+                mime_type=file_info.get("mime_type", "application/pdf"),
+                status=DocumentStatus.PENDING
+            )
+            db.add(doc)
+
+        db.commit()
+
+        # Enqueue processing job
+        job = enqueue_job(
+            "worker.tasks_refactored.process_run",
+            run_id=db_run.id,
+            provider=db_run.provider,
+            model=db_run.model or "meta-llama/llama-3.3-70b-instruct",
+            doc_extractor=db_run.doc_extractor or "docling",
+            status=RunStatus.QUEUED
+        )
+
+        logger.info(f"Enqueued processing job {job.id} for run {db_run.id} with {len(run.files)} files")
 
     return {
         "run_id": db_run.id,
@@ -901,6 +1134,7 @@ async def retry_run(
     
     # Check idempotency cache
     if idempotency_key:
+        r = None
         try:
             r = redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379"))
             cache_key = f"idempotency:retry_run:{idempotency_key}"
@@ -908,9 +1142,11 @@ async def retry_run(
             if cached_response:
                 logger.info(f"Returning cached retry response for idempotency key: {idempotency_key}")
                 return json.loads(cached_response)
-            r.close()
         except Exception as e:
             logger.warning(f"Failed to check idempotency cache: {e}")
+        finally:
+            if r is not None:
+                r.close()
     
     # Get run
     run = db.query(Run).filter(Run.id == run_id).first()
@@ -1483,6 +1719,21 @@ async def cleanup_stale_workers_endpoint(current_user: dict = Depends(get_curren
             status_code=500,
             detail=f"Worker cleanup failed. Please contact support with reference: {correlation_id}"
         )
+
+
+# ============================================================================
+# Static File Serving (Frontend)
+# ============================================================================
+# Mount frontend static files AFTER all API routes to avoid conflicts
+# This serves index.html, simple.html, app.js, simple.js from the frontend directory
+
+import os.path
+frontend_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "frontend")
+if os.path.exists(frontend_dir):
+    app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="frontend")
+    logger.info(f"✅ Frontend static files mounted from: {frontend_dir}")
+else:
+    logger.warning(f"⚠️ Frontend directory not found: {frontend_dir}")
 
 
 if __name__ == "__main__":
