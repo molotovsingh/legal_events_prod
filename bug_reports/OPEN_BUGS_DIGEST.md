@@ -6,42 +6,26 @@ Purpose: Snapshot of open issues with priorities, suggested owners, and referenc
 
 ---
 
-## ⚠️ NEW CRITICAL ISSUES DETECTED (2025-11-11)
+## ⚠️ OPEN ISSUES (2025-11-12)
 
-**Status:** 9 new bugs found in code audit. 3 are production-critical.
+**Status:** 6 bugs remain from code audit (P0 critical bugs RESOLVED).
 
-- **P0 Critical:** 3 open ❌
+- **P0 Critical:** 0 open ✅
 - **P1 Major:** 3 open ⚠️
 - **P2 Minor:** 3 open 📝
 
 **Latest Report (2025-11-11):**
 - BUG_REPORT_20251111T025314Z.md — Resource leaks, None type errors, shutdown issues
-- Impact: Redis connection pool exhaustion, process crashes, graceful shutdown failures
+- **P0 bugs RESOLVED (2025-11-12)** — See commit 1c786ef
 
 ---
 
-## P0 — Critical (NEW)
+## P0 — Critical
 
-- **Redis health check connection leak** (api/main.py:155–162)
-  - Symptom: Calling `/health` repeatedly when Redis unavailable leaks connections
-  - Impact: Redis connection pool exhaustion under sustained health checks
-  - Fix: Wrap Redis operations in try/finally; ensure r.close() in both paths
-  - Effort: 10 minutes
-  - Report: BUG_REPORT_20251111T025314Z.md
+**No open P0 issues** ✅
 
-- **Redis retry endpoint connection leak** (api/main.py:904–913)
-  - Symptom: Early return on cache hit bypasses r.close(); exception handler also missing cleanup
-  - Impact: Each successful cache lookup leaks a connection
-  - Fix: Use finally block; move r.close() outside conditional branches
-  - Effort: 10 minutes
-  - Report: BUG_REPORT_20251111T025314Z.md
-
-- **None type error in export function** (worker/tasks.py:397–399)
-  - Symptom: Missing null check on case/client queries; AttributeError on missing foreign key
-  - Impact: Export crashes if case or client deleted; silent process termination
-  - Fix: Add explicit `if not case:` and `if not client:` guards with error logging
-  - Effort: 15 minutes
-  - Report: BUG_REPORT_20251111T025314Z.md
+All P0 critical bugs from the 2025-11-11 audit have been resolved.
+See "Recently Resolved (2025-11-12)" section below.
 
 ## P1 — Major (NEW)
 
@@ -88,6 +72,32 @@ Purpose: Snapshot of open issues with priorities, suggested owners, and referenc
   - Fix: Implement signal-based loop break; reduce blocking time
   - Effort: 30 minutes (refactor)
   - Report: BUG_REPORT_20251111T025314Z.md
+
+---
+
+## Recently Resolved (2025-11-12)
+
+**3 P0 Critical Resource Leaks (commit 1c786ef)**
+
+1. **Redis health check connection leak** ✅
+   - Fixed Redis connections not being closed when health check fails
+   - Added try/finally block to ensure r.close() always executes
+   - Files: api/main.py:238-250
+   - Impact: Prevents Redis connection pool exhaustion under sustained health checks
+
+2. **Redis retry endpoint connection leak** ✅
+   - Fixed early return on idempotency cache hit bypassing r.close()
+   - Moved r.close() to finally block for all code paths
+   - Files: api/main.py:1135-1149
+   - Impact: Eliminates memory leak on each successful retry attempt
+
+3. **None type error in export generation** ✅
+   - Added null checks on case/client queries before attribute access
+   - Explicit error logging when foreign key references are missing
+   - Files: worker/tasks.py:397-406
+   - Impact: Prevents worker crashes when case or client deleted
+
+**Bug report:** bug_reports/BUG_REPORT_20251111T025314Z.md
 
 ---
 
