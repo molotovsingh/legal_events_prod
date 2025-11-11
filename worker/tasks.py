@@ -259,9 +259,14 @@ def process_run(run_id: int, provider: str = "openrouter", model: str = None) ->
             db.commit()
         
         raise
-    
+
     finally:
         db.close()
+        # Clean up storage resources (P1 fix: prevent connection pool accumulation)
+        try:
+            storage.close()
+        except Exception as e:
+            logger.warning(f"Failed to close storage: {e}")
 
 
 def process_document(

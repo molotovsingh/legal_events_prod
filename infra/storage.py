@@ -445,6 +445,22 @@ class MinioStorage:
             logger.error(f"MinIO health check failed: {e}")
             return False
 
+    def close(self):
+        """
+        Close and cleanup MinIO client resources.
+
+        The Minio SDK uses urllib3's PoolManager for HTTP connections.
+        While connections are automatically managed and reused, explicitly
+        clearing the pool helps prevent resource accumulation in long-running workers.
+        """
+        try:
+            # Access the underlying HTTP client's connection pool
+            if hasattr(self.client, '_http') and hasattr(self.client._http, 'clear'):
+                self.client._http.clear()
+                logger.debug("Cleared MinIO HTTP connection pool")
+        except Exception as e:
+            logger.warning(f"Failed to clear MinIO connection pool: {e}")
+
 
 # Singleton instance with thread safety
 import threading

@@ -199,27 +199,37 @@ class WorkerEventConsumer:
         self.redis = redis_conn
         self.channel = "worker:events"
         self.pubsub = None
+        self.running = False  # P1 fix: shutdown control flag
         
     def start(self, callback):
         """
         Start consuming events.
-        
+
         Args:
             callback: Function to call with each event (event: WorkerEvent)
         """
         self.pubsub = self.redis.pubsub()
         self.pubsub.subscribe(self.channel)
-        
+        self.running = True  # P1 fix: set running flag
+
         for message in self.pubsub.listen():
+            # P1 fix: Check running flag to allow graceful shutdown
+            if not self.running:
+                logger.info("Event consumer stopping (running=False)")
+                break
+
             if message['type'] == 'message':
                 try:
                     event = WorkerEvent.from_json(message['data'])
                     callback(event)
                 except Exception as e:
                     logger.error(f"Failed to process event: {e}")
+                    # P1 fix: Move failed events to DLQ (Dead Letter Queue)
+                    self._move_to_dlq(message['data'], e)
                     
     def stop(self):
         """Stop consuming events"""
+        self.running = False  # P1 fix: Signal loop to stop
         if self.pubsub:
             self.pubsub.unsubscribe()
             self.pubsub.close()
@@ -234,3 +244,45 @@ class WorkerEventConsumer:
             except Exception as e:
                 logger.error(f"Failed to parse historical event: {e}")
         return events
+
+    def _move_to_dlq(self, raw_event_data: bytes, error: Exception):
+        """
+        Move failed event to Dead Letter Queue (DLQ) for manual inspection.
+
+        P1 Fix: Events that fail to parse or process are now preserved
+        in the DLQ instead of being silently dropped, preventing data loss
+        and enabling manual recovery.
+
+        Args:
+            raw_event_data: Raw event data (JSON bytes from Redis)
+            error: Exception that caused the failure
+        """
+        try:
+            import json
+            from datetime import datetime
+
+            dlq_entry = {
+                "raw_data": raw_event_data.decode('utf-8') if isinstance(raw_event_data, bytes) else str(raw_event_data),
+                "error": str(error),
+                "error_type": type(error).__name__,
+                "failed_at": datetime.utcnow().isoformat(),
+                "source": "WorkerEventConsumer"
+            }
+
+            # Push to DLQ (same key as API event processor)
+            DLQ_KEY = "worker:events:dlq"
+            self.redis.lpush(DLQ_KEY, json.dumps(dlq_entry))
+
+            # Trim DLQ to last 1000 entries to prevent unbounded growth
+            self.redis.ltrim(DLQ_KEY, 0, 999)
+
+            logger.warning(
+                f"Event moved to DLQ. Error: {error}. "
+                f"Check Redis key '{DLQ_KEY}' for manual recovery."
+            )
+        except Exception as dlq_error:
+            # Last resort: Log to stderr if DLQ push fails
+            logger.error(
+                f"CRITICAL: Failed to move event to DLQ! "
+                f"Original Error: {error}, DLQ Error: {dlq_error}"
+            )
