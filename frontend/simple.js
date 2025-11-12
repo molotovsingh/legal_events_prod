@@ -453,7 +453,7 @@ async function processRun(caseId, files, statusDiv) {
             doc_extractor: docExtractor  // Use 'doc_extractor' not 'doc_extractor_key'
         });
 
-        currentRunId = runResponse.data.id;
+        currentRunId = runResponse.data.run_id;  // Fixed: API returns 'run_id' not 'id'
         statusDiv.innerHTML = `<span class="text-green-600">Run ${currentRunId} started</span>`;
 
         // Show results section and start polling

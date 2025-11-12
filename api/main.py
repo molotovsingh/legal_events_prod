@@ -753,13 +753,12 @@ current_user: User = Depends(get_current_user)  # Optional auth for testing
         db.commit()
 
         # Enqueue processing job
+        # Note: doc_extractor is stored in Run record (line 728), worker reads it from DB
         job = enqueue_job(
             "worker.tasks_refactored.process_run",
             run_id=db_run.id,
             provider=db_run.provider,
-            model=db_run.model or "meta-llama/llama-3.3-70b-instruct",
-            doc_extractor=db_run.doc_extractor or "docling",
-            status=RunStatus.QUEUED
+            model=db_run.model or "meta-llama/llama-3.3-70b-instruct"
         )
 
         logger.info(f"Enqueued processing job {job.id} for run {db_run.id} with {len(run.files)} files")
