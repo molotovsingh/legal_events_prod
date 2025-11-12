@@ -605,6 +605,95 @@ async def upload_files(
     }
 
 
+@app.post("/v1/cases/{case_id}/documents")
+async def upload_case_documents(
+    case_id: int,
+    files: List[UploadFile] = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Upload documents for a specific case.
+
+    This endpoint validates that the case exists before accepting file uploads,
+    providing better error handling and UX compared to generic upload endpoint.
+    Files are uploaded to temporary MinIO storage and can be associated with
+    a run later.
+
+    Args:
+        case_id: ID of the case to upload documents for
+        files: List of files to upload
+        db: Database session
+        current_user: Authenticated user
+
+    Returns:
+        Dictionary with:
+        - files: List of uploaded file metadata (filename, storage_path, size, sha256)
+        - count: Number of files uploaded
+        - case_id: ID of the associated case
+
+    Raises:
+        404: Case not found
+        400: No files provided
+        500: Upload failure
+
+    Requires:
+        - Authentication (JWT token)
+        - Valid case_id
+        - At least one file
+    """
+    # Validate case exists
+    case = db.query(Case).filter(Case.id == case_id).first()
+    if not case:
+        raise HTTPException(status_code=404, detail=f"Case with ID {case_id} not found")
+
+    # Validate files provided
+    if not files:
+        raise HTTPException(status_code=400, detail="No files provided")
+
+    # Reuse upload logic from /v1/upload endpoint
+    storage = MinioStorage()
+    uploaded_files = []
+
+    for file in files:
+        try:
+            # Generate temporary storage key (without run_id yet)
+            temp_key = f"temp/{uuid.uuid4()}/{file.filename}"
+
+            # Read file content
+            file_content = await file.read()
+
+            # Upload to MinIO
+            storage.upload_bytes(temp_key, file_content)
+
+            # Calculate SHA256 hash for integrity verification
+            sha256_hash = hashlib.sha256(file_content).hexdigest()
+
+            uploaded_files.append({
+                "filename": file.filename,
+                "storage_path": temp_key,  # Frontend expects this field
+                "storage_key": temp_key,
+                "size_bytes": len(file_content),
+                "sha256": sha256_hash,
+                "mime_type": file.content_type or "application/pdf"
+            })
+
+            logger.info(f"Uploaded file {file.filename} for case {case_id} to temporary storage: {temp_key} (SHA256: {sha256_hash[:16]}...)")
+
+        except Exception as e:
+            logger.error(f"Failed to upload file {file.filename} for case {case_id}: {e}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to upload file {file.filename}: {str(e)}"
+            )
+
+    return {
+        "files": uploaded_files,
+        "count": len(uploaded_files),
+        "case_id": case_id
+    }
+
+
 # ============================================================================
 # Run Management Endpoints
 # ============================================================================

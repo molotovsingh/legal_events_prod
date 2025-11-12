@@ -4,10 +4,18 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Legal Events - Simple Interface</title>
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' http://localhost:8000 http://localhost:3001; script-src 'self' https://cdn.tailwindcss.com https://unpkg.com 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; font-src 'self' data: https://r2cdn.perplexity.ai;">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' http://localhost:8000 http://localhost:3001; script-src 'self' https://cdn.tailwindcss.com https://unpkg.com; style-src 'self' https://cdn.tailwindcss.com; font-src 'self' data: https://r2cdn.perplexity.ai;">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+    <script src="config.js"></script>
     <script src="simple.js" defer></script>
+    <script>
+        // Move inline handlers to external script to satisfy CSP
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('cancelLoginBtn').addEventListener('click', hideLoginModal);
+            document.getElementById('loginBtn').addEventListener('click', handleLogin);
+        });
+    </script>
     <style>
         .section { border: 1px solid #e5e7eb; border-radius: 4px; padding: 16px; margin-bottom: 12px; background: white; }
         .section.disabled { opacity: 0.5; pointer-events: none; }
@@ -46,15 +54,15 @@
         <div class="bg-white rounded p-6 w-80 shadow-lg">
             <h3 class="font-semibold mb-4">Login</h3>
             <div class="field-group">
-                <input type="email" id="loginEmail" value="dev@localhost" placeholder="Email" class="compact-input">
+                <input type="email" id="loginEmail" placeholder="Email" class="compact-input">
             </div>
             <div class="field-group">
-                <input type="password" id="loginPassword" value="devpass123" placeholder="Password" class="compact-input">
+                <input type="password" id="loginPassword" placeholder="Password" class="compact-input">
             </div>
             <div id="loginError" class="text-red-600 text-xs mb-3 hidden"></div>
             <div class="flex justify-end space-x-2">
-                <button onclick="hideLoginModal()" class="compact-btn btn-secondary">Cancel</button>
-                <button onclick="handleLogin()" class="compact-btn btn-primary">Login</button>
+                <button id="cancelLoginBtn" class="compact-btn btn-secondary">Cancel</button>
+                <button id="loginBtn" class="compact-btn btn-primary">Login</button>
             </div>
         </div>
     </div>

@@ -1,17 +1,58 @@
-// API configuration
-const API_URL = 'http://localhost:8000';
+// API configuration - derive from environment or window.location
+const API_URL = (() => {
+    // Try to get from environment variable (set by build process)
+    if (typeof window !== 'undefined' && window.API_BASE_URL) {
+        return window.API_BASE_URL;
+    }
+    // Fallback to current origin + /api or localhost:8000
+    const origin = window.location.origin;
+    if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
+        return 'http://localhost:8000';
+    }
+    return origin;
+})();
 
-// State management
+// Wrap in IIFE to avoid global pollution
+(function() {
+'use strict';
+
+// State management with security improvements
 let authToken = localStorage.getItem('jwt_token');
 let currentUser = null;
 let currentRunId = null;
 let pollInterval = null;
 
+// Token expiration tracking
+const TOKEN_KEY = 'jwt_token';
+const TOKEN_EXPIRY_KEY = 'jwt_expiry';
+
+function setAuthToken(token, expiresIn = 3600) { // Default 1 hour expiry
+    authToken = token;
+    localStorage.setItem(TOKEN_KEY, token);
+    const expiry = new Date().getTime() + (expiresIn * 1000);
+    localStorage.setItem(TOKEN_EXPIRY_KEY, expiry.toString());
+}
+
+function isTokenExpired() {
+    const expiry = localStorage.getItem(TOKEN_EXPIRY_KEY);
+    if (!expiry) return true;
+    return new Date().getTime() > parseInt(expiry);
+}
+
+function clearAuthToken() {
+    authToken = null;
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(TOKEN_EXPIRY_KEY);
+}
+
 // Persistent state (last used IDs)
 let lastClientId = localStorage.getItem('last_client_id');
 let lastCaseId = localStorage.getItem('last_case_id');
 
-// Initialize axios interceptors
+// Initialize axios interceptors with security improvements
+axios.defaults.timeout = 30000; // 30 second timeout
+axios.defaults.withCredentials = false; // Don't send cookies
+
 axios.interceptors.request.use(
     config => {
         if (authToken) {
@@ -60,7 +101,7 @@ async function handleLogin() {
     const email = document.getElementById('loginEmail').value.trim();
     const password = document.getElementById('loginPassword').value;
     const errorDiv = document.getElementById('loginError');
-    const loginBtn = document.querySelector('button[onclick="handleLogin()"]');
+    const loginBtn = document.getElementById('loginBtn');
 
     errorDiv.classList.add('hidden');
     errorDiv.textContent = '';
@@ -83,8 +124,9 @@ async function handleLogin() {
             password: password
         });
 
-        authToken = response.data.access_token;
-        localStorage.setItem('jwt_token', authToken);
+        const token = response.data.access_token;
+        const expiresIn = response.data.expires_in || 3600; // Default 1 hour
+        setAuthToken(token, expiresIn);
         currentUser = response.data.user || { email: email };
 
         hideLoginModal();
@@ -110,14 +152,14 @@ async function handleLogin() {
 }
 
 function handleLogout() {
-    authToken = null;
+    clearAuthToken();
     currentUser = null;
-    localStorage.removeItem('jwt_token');
     updateAuthUI();
 }
 
 async function checkAuthStatus() {
-    if (!authToken) {
+    if (!authToken || isTokenExpired()) {
+        clearAuthToken();
         showLoginModal();
         return;
     }
@@ -179,6 +221,12 @@ async function loadProviders() {
         if (authToken) {
             const providerSelect = document.getElementById('providerSelect');
             providerSelect.innerHTML = '<option value="">Failed to load providers</option>';
+            
+            // Show user-friendly error
+            const statusDiv = document.getElementById('quickStartStatus') || document.getElementById('uploadStatus');
+            if (statusDiv) {
+                statusDiv.innerHTML = '<span class="text-red-600">Failed to load providers. Please refresh the page.</span>';
+            }
         }
     }
 }
@@ -215,19 +263,56 @@ async function loadModels(providerKey) {
     }
 }
 
-// Quick Start functionality
-function initializeQuickStart() {
+// Quick Start functionality with validation
+async function initializeQuickStart() {
     const quickClientId = document.getElementById('quickClientId');
     const quickCaseId = document.getElementById('quickCaseId');
     const quickStartBtn = document.getElementById('quickStartBtn');
     const quickStartBadge = document.getElementById('quickStartBadge');
 
+    // Validate stored IDs against server
     if (lastClientId && lastCaseId) {
-        quickClientId.value = lastClientId;
-        quickCaseId.value = lastCaseId;
-        quickStartBtn.disabled = false;
-        quickStartBadge.textContent = 'Ready';
-        quickStartBadge.className = 'status-badge status-success';
+        try {
+            // Verify client exists
+            const clientResponse = await axios.get(`${API_URL}/v1/clients/${lastClientId}`);
+            if (!clientResponse.data) {
+                throw new Error('Client not found');
+            }
+            
+            // Verify case exists and belongs to client
+            const caseResponse = await axios.get(`${API_URL}/v1/cases/${lastCaseId}`);
+            if (!caseResponse.data || caseResponse.data.client_id !== parseInt(lastClientId)) {
+                throw new Error('Case not found or invalid');
+            }
+            
+            // IDs are valid
+            quickClientId.value = lastClientId;
+            quickCaseId.value = lastCaseId;
+            quickStartBtn.disabled = false;
+            quickStartBadge.textContent = 'Ready';
+            quickStartBadge.className = 'status-badge status-success';
+        } catch (error) {
+            console.error('Quick Start validation failed:', error);
+            // Clear invalid IDs
+            localStorage.removeItem('last_client_id');
+            localStorage.removeItem('last_case_id');
+            lastClientId = null;
+            lastCaseId = null;
+            
+            // Show not ready state
+            quickClientId.value = '';
+            quickCaseId.value = '';
+            quickStartBtn.disabled = true;
+            quickStartBadge.textContent = 'Not Ready';
+            quickStartBadge.className = 'status-badge status-pending';
+        }
+    } else {
+        // No stored IDs
+        quickClientId.value = '';
+        quickCaseId.value = '';
+        quickStartBtn.disabled = true;
+        quickStartBadge.textContent = 'Not Ready';
+        quickStartBadge.className = 'status-badge status-pending';
     }
 }
 
@@ -294,11 +379,8 @@ async function createCase() {
         document.getElementById('caseIdForRun').value = lastCaseId;
         statusDiv.innerHTML = `<span class="text-green-600">Created: ID ${lastCaseId}</span>`;
         
-        // Update quick start
-        document.getElementById('quickCaseId').value = lastCaseId;
-        document.getElementById('quickStartBtn').disabled = false;
-        document.getElementById('quickStartBadge').textContent = 'Ready';
-        document.getElementById('quickStartBadge').className = 'status-badge status-success';
+        // Update quick start with validation
+        await initializeQuickStart();
     } catch (error) {
         statusDiv.innerHTML = `<span class="text-red-600">Error: ${error.response?.data?.detail || 'Failed'}</span>`;
     }
@@ -328,6 +410,21 @@ async function processRun(caseId, files, statusDiv) {
         return;
     }
 
+    // File validation
+    const validTypes = ['application/pdf', 'text/plain', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+    const maxSize = 10 * 1024 * 1024; // 10MB
+    
+    for (let file of files) {
+        if (!validTypes.includes(file.type)) {
+            statusDiv.innerHTML = `<span class="text-red-600">Invalid file type: ${file.name}. Only PDF, TXT, DOC, DOCX allowed.</span>`;
+            return;
+        }
+        if (file.size > maxSize) {
+            statusDiv.innerHTML = `<span class="text-red-600">File too large: ${file.name}. Maximum 10MB.</span>`;
+            return;
+        }
+    }
+
     statusDiv.innerHTML = '<span class="text-blue-600"><span class="spinner"></span> Uploading...</span>';
 
     try {
@@ -343,16 +440,17 @@ async function processRun(caseId, files, statusDiv) {
             { headers: { 'Content-Type': 'multipart/form-data' } }
         );
 
-        const documentIds = uploadResponse.data.map(doc => doc.id);
-        statusDiv.innerHTML = `<span class="text-blue-600"><span class="spinner"></span> Starting processing...</span>`;
+        // Extract file metadata from upload response
+        const filesMetadata = uploadResponse.data.files;
+        statusDiv.innerHTML = `<span class="text-blue-600"><span class="spinner"></span> Starting processing (${filesMetadata.length} files)...</span>`;
 
-        // Start run
+        // Start run with file manifest (API expects 'files' not 'document_ids')
         const runResponse = await axios.post(`${API_URL}/v1/runs`, {
             case_id: parseInt(caseId),
-            document_ids: documentIds,
-            event_extractor_key: provider,
-            model_name: model,
-            doc_extractor_key: docExtractor
+            files: filesMetadata,  // Pass file metadata from upload
+            provider: provider,     // Use 'provider' not 'event_extractor_key'
+            model: model,           // Use 'model' not 'model_name'
+            doc_extractor: docExtractor  // Use 'doc_extractor' not 'doc_extractor_key'
         });
 
         currentRunId = runResponse.data.id;
@@ -399,24 +497,42 @@ async function refreshResults() {
             resultsBadge.className = 'status-badge status-processing';
         }
 
-        // Display summary
-        let html = `
-            <div class="text-xs space-y-1 mb-3">
-                <div><strong>Run ID:</strong> ${run.id}</div>
-                <div><strong>Status:</strong> ${run.status}</div>
-                <div><strong>Documents:</strong> ${run.documents?.length || 0}</div>
-        `;
+        // Display summary using DOM methods instead of innerHTML
+        const summaryDiv = document.createElement('div');
+        summaryDiv.className = 'text-xs space-y-1 mb-3';
+        
+        const runIdDiv = document.createElement('div');
+        runIdDiv.innerHTML = '<strong>Run ID:</strong> ';
+        runIdDiv.appendChild(document.createTextNode(run.id));
+        summaryDiv.appendChild(runIdDiv);
+        
+        const statusDiv = document.createElement('div');
+        statusDiv.innerHTML = '<strong>Status:</strong> ';
+        statusDiv.appendChild(document.createTextNode(run.status));
+        summaryDiv.appendChild(statusDiv);
+        
+        const docsDiv = document.createElement('div');
+        docsDiv.innerHTML = '<strong>Documents:</strong> ';
+        docsDiv.appendChild(document.createTextNode(run.documents?.length || 0));
+        summaryDiv.appendChild(docsDiv);
 
         if (run.run_metadata) {
             if (run.run_metadata.total_seconds) {
-                html += `<div><strong>Processing Time:</strong> ${run.run_metadata.total_seconds.toFixed(1)}s</div>`;
+                const timeDiv = document.createElement('div');
+                timeDiv.innerHTML = '<strong>Processing Time:</strong> ';
+                timeDiv.appendChild(document.createTextNode(run.run_metadata.total_seconds.toFixed(1) + 's'));
+                summaryDiv.appendChild(timeDiv);
             }
             if (run.run_metadata.cost_usd) {
-                html += `<div><strong>Cost:</strong> $${run.run_metadata.cost_usd.toFixed(4)}</div>`;
+                const costDiv = document.createElement('div');
+                costDiv.innerHTML = '<strong>Cost:</strong> $';
+                costDiv.appendChild(document.createTextNode(run.run_metadata.cost_usd.toFixed(4)));
+                summaryDiv.appendChild(costDiv);
             }
         }
 
-        html += '</div>';
+        resultsContent.innerHTML = '';
+        resultsContent.appendChild(summaryDiv);
 
         // Fetch and display events
         if (run.status === 'completed') {
@@ -424,33 +540,76 @@ async function refreshResults() {
             const events = eventsResponse.data;
 
             if (events.length > 0) {
-                html += `<div class="text-xs"><strong>Events Extracted:</strong> ${events.length}</div>`;
-                html += '<div class="mt-2 overflow-x-auto"><table class="w-full text-xs border-collapse">';
-                html += '<thead><tr class="border-b bg-gray-50">';
-                html += '<th class="p-2 text-left">Type</th><th class="p-2 text-left">Date</th><th class="p-2 text-left">Description</th>';
-                html += '</tr></thead><tbody>';
+                const eventsDiv = document.createElement('div');
+                eventsDiv.className = 'text-xs';
+                eventsDiv.innerHTML = '<strong>Events Extracted:</strong> ';
+                eventsDiv.appendChild(document.createTextNode(events.length));
+                resultsContent.appendChild(eventsDiv);
 
-                events.slice(0, 10).forEach(event => {
-                    html += `<tr class="border-b">
-                        <td class="p-2">${event.event_type || 'N/A'}</td>
-                        <td class="p-2">${event.event_date || 'N/A'}</td>
-                        <td class="p-2">${(event.description || '').substring(0, 60)}...</td>
-                    </tr>`;
+                const tableDiv = document.createElement('div');
+                tableDiv.className = 'mt-2 overflow-x-auto';
+                
+                const table = document.createElement('table');
+                table.className = 'w-full text-xs border-collapse';
+                
+                const thead = document.createElement('thead');
+                const headerRow = document.createElement('tr');
+                headerRow.className = 'border-b bg-gray-50';
+                
+                ['Type', 'Date', 'Description'].forEach(headerText => {
+                    const th = document.createElement('th');
+                    th.className = 'p-2 text-left';
+                    th.textContent = headerText;
+                    headerRow.appendChild(th);
                 });
-
-                html += '</tbody></table></div>';
+                thead.appendChild(headerRow);
+                table.appendChild(thead);
+                
+                const tbody = document.createElement('tbody');
+                events.slice(0, 10).forEach(event => {
+                    const row = document.createElement('tr');
+                    row.className = 'border-b';
+                    
+                    const typeCell = document.createElement('td');
+                    typeCell.className = 'p-2';
+                    typeCell.textContent = event.event_type || 'N/A';
+                    row.appendChild(typeCell);
+                    
+                    const dateCell = document.createElement('td');
+                    dateCell.className = 'p-2';
+                    dateCell.textContent = event.event_date || 'N/A';
+                    row.appendChild(dateCell);
+                    
+                    const descCell = document.createElement('td');
+                    descCell.className = 'p-2';
+                    descCell.textContent = (event.description || '').substring(0, 60) + '...';
+                    row.appendChild(descCell);
+                    
+                    tbody.appendChild(row);
+                });
+                table.appendChild(tbody);
+                tableDiv.appendChild(table);
+                resultsContent.appendChild(tableDiv);
                 
                 if (events.length > 10) {
-                    html += `<div class="text-xs text-gray-500 mt-2">Showing 10 of ${events.length} events. Export for full data.</div>`;
+                    const noteDiv = document.createElement('div');
+                    noteDiv.className = 'text-xs text-gray-500 mt-2';
+                    noteDiv.textContent = `Showing 10 of ${events.length} events. Export for full data.`;
+                    resultsContent.appendChild(noteDiv);
                 }
             } else {
-                html += '<div class="text-xs text-gray-500 mt-2">No events extracted</div>';
+                const noEventsDiv = document.createElement('div');
+                noEventsDiv.className = 'text-xs text-gray-500 mt-2';
+                noEventsDiv.textContent = 'No events extracted';
+                resultsContent.appendChild(noEventsDiv);
             }
         }
-
-        resultsContent.innerHTML = html;
     } catch (error) {
         console.error('Failed to refresh results:', error);
+        const errorDiv = document.createElement('div');
+        errorDiv.className = 'text-red-600 text-xs mt-2';
+        errorDiv.textContent = 'Failed to load results. Please refresh the page.';
+        resultsContent.appendChild(errorDiv);
     }
 }
 
@@ -466,6 +625,20 @@ function stopPolling() {
         pollInterval = null;
     }
 }
+
+// Cleanup on page unload
+window.addEventListener('beforeunload', () => {
+    stopPolling();
+});
+
+// Cleanup on visibility change (tab switching)
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+        stopPolling();
+    } else if (currentRunId) {
+        startPolling();
+    }
+});
 
 // Export functionality
 async function exportData(format) {
@@ -487,7 +660,17 @@ async function exportData(format) {
         link.click();
         link.remove();
     } catch (error) {
-        alert('Export failed: ' + (error.response?.data?.detail || 'Unknown error'));
+        const errorDiv = document.createElement('div');
+        errorDiv.className = 'text-red-600 text-xs mt-2';
+        errorDiv.textContent = 'Export failed: ' + (error.response?.data?.detail || 'Unknown error');
+        
+        const resultsContent = document.getElementById('resultsContent');
+        if (resultsContent) {
+            resultsContent.appendChild(errorDiv);
+        } else {
+            // Fallback to alert if no results content
+            alert('Export failed: ' + (error.response?.data?.detail || 'Unknown error'));
+        }
     }
 }
 
@@ -504,3 +687,26 @@ function toggleSection(sectionId) {
         section.classList.add('collapsed');
     }
 }
+
+// Add ARIA labels for accessibility
+document.addEventListener('DOMContentLoaded', function() {
+    // Add ARIA labels to form inputs
+    const inputs = document.querySelectorAll('input, select, button');
+    inputs.forEach(input => {
+        if (!input.getAttribute('aria-label') && input.id) {
+            input.setAttribute('aria-label', input.id.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase()));
+        }
+    });
+    
+    // Add keyboard navigation support
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            const modal = document.getElementById('loginModal');
+            if (!modal.classList.contains('hidden')) {
+                hideLoginModal();
+            }
+        }
+    });
+});
+
+})(); // End IIFE
