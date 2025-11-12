@@ -16,13 +16,15 @@ from typing import Dict, Any, Optional, TYPE_CHECKING
 if TYPE_CHECKING:
     from .legal_pipeline_refactored import LegalEventsPipeline
 
-# Provider code mappings (obfuscated)
+# Provider code mappings (obfuscated) - aligned with v0.11.0+ unified registry
 PROVIDER_CODES = {
     'langextract': 'LE1',
-    'openrouter': 'OR4',
-    'opencode_zen': 'OZ5',
     'openai': 'OA2',
-    'anthropic': 'AN3'
+    'anthropic': 'AN3',
+    'openrouter': 'OR4',      # System default (v0.11.0+)
+    'opencode_zen': 'OZ5',
+    'deepseek': 'DS6',        # Added in v0.11.0
+    'google': 'GG7'           # Added in v0.11.0 (direct Gemini API)
 }
 
 # OCR engine code mappings
@@ -109,7 +111,7 @@ class PipelineMetadata:
     # Configuration (what defines the experiment)
     parser_name: str
     parser_version: Optional[str] = None
-    provider_name: str = 'google'
+    provider_name: str = 'openrouter'  # Aligned with v0.11.0+ system default
     provider_model: Optional[str] = None  # e.g., 'openai/gpt-4o-mini', 'gemini-2.0-flash'
     ocr_engine: Optional[str] = None
     table_mode: Optional[str] = None
@@ -177,8 +179,8 @@ class PipelineMetadata:
         except Exception:
             pass
 
-        # Provider info
-        provider_name = getattr(pipeline, 'provider', 'google')
+        # Provider info (aligned with v0.11.0+ system default)
+        provider_name = getattr(pipeline, 'provider', 'openrouter')
 
         # Provider model - simplified extraction with standardized config.model field
         provider_model = None

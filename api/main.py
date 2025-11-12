@@ -152,22 +152,8 @@ async def lifespan(app: FastAPI):
     storage.ensure_bucket()
     logger.info("✅ MinIO storage initialized")
 
-    # Validate event providers
-    logger.info("📋 Validating event extraction providers...")
-    try:
-        catalog = get_event_extractor_catalog()
-        enabled_providers = catalog.list_extractors(enabled=True)
-        enabled_ids = [p.provider_id for p in enabled_providers]
-        logger.info(f"✅ Event providers loaded: {', '.join(enabled_ids)}")
-
-        # Log any providers that failed to load
-        all_providers = catalog.list_extractors()
-        disabled_ids = [p.provider_id for p in all_providers if not p.enabled]
-        if disabled_ids:
-            logger.warning(f"⚠️ Disabled providers (import failures): {', '.join(disabled_ids)}")
-    except Exception as e:
-        logger.error(f"❌ Failed to validate event providers: {e}")
-        raise RuntimeError(f"Event provider validation failed: {e}")
+    # Note: Provider validation now uses unified registry (core/providers.py)
+    # Legacy catalog (core/event_extractor_catalog.py) retained for backward compatibility in factory only
 
     logger.info("🔒 Security: Authentication ENABLED (JWT required for write operations)")
 

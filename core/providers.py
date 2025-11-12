@@ -33,6 +33,9 @@ from .config import (
     OpenRouterConfig,
     OpenAIConfig,
     AnthropicConfig,
+    DeepSeekConfig,
+    GeminiEventConfig,
+    LangExtractConfig,
     ExtractorConfig
 )
 
@@ -92,6 +95,24 @@ def _create_anthropic_extractor(config: AnthropicConfig) -> EventExtractor:
     return AnthropicEventExtractor(config)
 
 
+def _create_deepseek_extractor(config: DeepSeekConfig) -> EventExtractor:
+    """Create DeepSeek event extractor."""
+    from .deepseek_adapter import DeepSeekEventExtractor
+    return DeepSeekEventExtractor(config)
+
+
+def _create_google_extractor(config: GeminiEventConfig) -> EventExtractor:
+    """Create Google Gemini event extractor (direct API)."""
+    from .gemini_adapter import GeminiEventExtractor
+    return GeminiEventExtractor(config)
+
+
+def _create_langextract_extractor(config: LangExtractConfig) -> EventExtractor:
+    """Create LangExtract event extractor (Gemini via LangExtract framework)."""
+    from .langextract_adapter import LangExtractEventExtractor
+    return LangExtractEventExtractor(config)
+
+
 # ============================================================================
 # PROVIDER REGISTRY - Single Source of Truth
 # ============================================================================
@@ -133,17 +154,41 @@ PROVIDERS: Dict[str, Provider] = {
         notes="Direct Anthropic API. Claude 3 Haiku (budget), Claude Sonnet 4.5 (ground truth)."
     ),
 
-    # Future providers (LangExtract, DeepSeek, Gemini) will be added here
-    # after architecture stabilizes. Template:
-    #
-    # "langextract": Provider(
-    #     id="langextract",
-    #     name="Google Gemini (via LangExtract)",
-    #     factory=_create_langextract_extractor,
-    #     config_class=LangExtractConfig,
-    #     default_model="gemini-2.0-flash",
-    #     enabled=False,  # Temporarily disabled during refactor
-    # ),
+    "deepseek": Provider(
+        id="deepseek",
+        name="DeepSeek",
+        factory=_create_deepseek_extractor,
+        config_class=DeepSeekConfig,
+        default_model="deepseek-chat",
+        supports_model_override=True,
+        enabled=True,
+        docs_url="https://platform.deepseek.com/api-docs",
+        notes="DeepSeek R1. Budget reasoning model via OpenAI-compatible API."
+    ),
+
+    "google": Provider(
+        id="google",
+        name="Google Gemini",
+        factory=_create_google_extractor,
+        config_class=GeminiEventConfig,
+        default_model="gemini-2.0-flash",
+        supports_model_override=True,
+        enabled=True,
+        docs_url="https://ai.google.dev/gemini-api/docs",
+        notes="Direct Google Gemini API. Alternative to LangExtract for simple chat-completion style extraction."
+    ),
+
+    "langextract": Provider(
+        id="langextract",
+        name="LangExtract (Gemini)",
+        factory=_create_langextract_extractor,
+        config_class=LangExtractConfig,
+        default_model="gemini-2.5-flash",
+        supports_model_override=True,
+        enabled=True,
+        docs_url="https://github.com/tsterbak/langextract",
+        notes="Google Gemini via LangExtract structured extraction framework. Uses few-shot prompting."
+    ),
 }
 
 
@@ -238,8 +283,10 @@ def validate_providers_on_startup() -> tuple[bool, list[str]]:
                 )
                 continue
 
-            # Try to call factory (dry run - don't actually use it)
-            logger.debug(f"✅ Provider '{provider.id}' validation passed")
+            # Actually instantiate adapter to validate imports and dependencies
+            # This catches import errors, missing packages, and initialization failures
+            extractor = provider.factory(config)
+            logger.debug(f"✅ Provider '{provider.id}' validation passed (adapter instantiated)")
 
         except Exception as e:
             errors.append(f"Provider '{provider.id}': {str(e)}")

@@ -15,7 +15,7 @@ except ImportError:
     LANGEXTRACT_AVAILABLE = False
     lx = None  # Set to None so references don't fail at import time
 
-from .constants import REQUIRED_ENV_VARS, DEFAULT_MODEL, LEGAL_EVENTS_PROMPT
+from .constants import REQUIRED_ENV_VARS, GEMINI_DEFAULT_MODEL, LEGAL_EVENTS_PROMPT
 from .examples import get_legal_events_examples
 
 logger = logging.getLogger(__name__)
@@ -37,7 +37,7 @@ class LangExtractClient:
         self.available = LANGEXTRACT_AVAILABLE
         self.api_key = None
         # Use provided model, or fall back to env var (standardized to GEMINI_MODEL in v0.11.0)
-        self.model_id = model or os.getenv("GEMINI_MODEL", os.getenv("GEMINI_MODEL_ID", DEFAULT_MODEL))
+        self.model_id = model or os.getenv("GEMINI_MODEL", os.getenv("GEMINI_MODEL_ID", GEMINI_DEFAULT_MODEL))
 
         if not self.available:
             logger.error("🚨 LangExtract module not available")

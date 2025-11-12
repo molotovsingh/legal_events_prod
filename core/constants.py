@@ -194,7 +194,8 @@ Review the document below and return valid JSON only."""
 
 # API configuration
 REQUIRED_ENV_VARS = ["GEMINI_API_KEY"]
-DEFAULT_MODEL = "gemini-2.5-flash"  # Google's recommended model for LangExtract (GA since June 2025)
+# LangExtract/Gemini-specific default (not system-wide default - see core/providers.py)
+GEMINI_DEFAULT_MODEL = "gemini-2.5-flash"  # Google's recommended model for LangExtract (GA since June 2025)
 
 # ============================================================================
 # MODEL IDENTIFIERS - Premium Models for Ground Truth Creation

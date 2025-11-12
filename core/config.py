@@ -7,7 +7,7 @@ import os
 from dataclasses import dataclass, field
 from typing import Optional, Literal, Tuple, Any
 
-from .constants import DEFAULT_MODEL
+from .constants import GEMINI_DEFAULT_MODEL
 
 
 # Helper functions for environment variable parsing
@@ -86,7 +86,7 @@ class LangExtractConfig:
     """
 
     # Model and API settings
-    model: str = field(default_factory=lambda: os.getenv("GEMINI_MODEL", DEFAULT_MODEL))
+    model: str = field(default_factory=lambda: os.getenv("GEMINI_MODEL", GEMINI_DEFAULT_MODEL))
     temperature: float = field(default_factory=lambda: env_float("LANGEXTRACT_TEMPERATURE", 0.0))
     max_workers: int = field(default_factory=lambda: env_int("LANGEXTRACT_MAX_WORKERS", 10))
     debug: bool = field(default_factory=lambda: env_bool("LANGEXTRACT_DEBUG", False))

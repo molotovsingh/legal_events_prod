@@ -369,7 +369,7 @@ class OpenRouterEventExtractor:
             document_reference=document_name,
             attributes={
                 "provider": "openrouter",
-                "model": self.config.active_model,
+                "model": self.config.model,
                 "parsing_strategy": "fallback_text_extraction",
                 "original_content_length": len(content)
             }
