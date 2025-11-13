@@ -4,11 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Legal Events - Simple Interface</title>
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' http://localhost:8000 http://localhost:3001; script-src 'self' https://cdn.tailwindcss.com https://unpkg.com; style-src 'self' https://cdn.tailwindcss.com; font-src 'self' data: https://r2cdn.perplexity.ai;">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' http://localhost:8000 http://localhost:3001 http://127.0.0.1:8000 http://127.0.0.1:3001 https://unpkg.com https://cdn.jsdelivr.net; script-src 'self' https://cdn.tailwindcss.com https://unpkg.com https://cdn.jsdelivr.net; style-src 'self' https://cdn.tailwindcss.com; font-src 'self' data: https://r2cdn.perplexity.ai;">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
-    <script src="config.js"></script>
-    <script src="simple.js" defer></script>
+    <script src="config.js?v=1763012002"></script>
+    <script src="simple.js?v=1763012002" defer></script>
     <script>
         // Move inline handlers to external script to satisfy CSP
         document.addEventListener('DOMContentLoaded', function() {
@@ -72,6 +72,7 @@
         <div class="flex justify-between items-center mb-4">
             <h1 class="text-2xl font-bold text-gray-800">Legal Events Extraction</h1>
             <div class="flex items-center space-x-3">
+                <span id="apiBadge" class="text-xs"></span>
                 <a href="index.html" class="text-sm text-blue-600 hover:underline">Full Interface</a>
                 <div id="authSection" class="text-sm"></div>
             </div>

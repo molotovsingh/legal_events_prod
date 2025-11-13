@@ -24,7 +24,7 @@ from infra.models import *
 from .schemas import *
 from infra.storage import MinioStorage
 from infra.storage_keys import generate_document_key, generate_artifact_key
-from infra.queue import enqueue_job
+from infra.queue import enqueue_job, enqueue_process_run
 from core.constants import FIVE_COLUMN_HEADERS
 from core.event_extractor_catalog import get_event_extractor_catalog
 # ✅ Authentication enabled - requires valid JWT Bearer token
@@ -176,7 +176,19 @@ app = FastAPI(
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:3001", "http://localhost:5001", "http://localhost:8000"],  # Frontend URLs
+    # Frontend URLs (include localhost and 127.0.0.1 variants to avoid incognito CORS mismatches)
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:3001",
+        "http://localhost:5001",
+        "http://localhost:8000",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:3001",
+        "http://127.0.0.1:5001",
+        "http://127.0.0.1:8000",
+        "http://0.0.0.0:8000",
+        "null",  # Allow file:// origin for local testing
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -754,14 +766,13 @@ current_user: User = Depends(get_current_user)  # Optional auth for testing
 
         # Enqueue processing job
         # Note: doc_extractor is stored in Run record (line 728), worker reads it from DB
-        job = enqueue_job(
-            "worker.tasks_refactored.process_run",
+        job_id = enqueue_process_run(
             run_id=db_run.id,
             provider=db_run.provider,
             model=db_run.model or "meta-llama/llama-3.3-70b-instruct"
         )
 
-        logger.info(f"Enqueued processing job {job.id} for run {db_run.id} with {len(run.files)} files")
+        logger.info(f"Enqueued processing job {job_id} for run {db_run.id} with {len(run.files)} files")
 
     return {
         "run_id": db_run.id,

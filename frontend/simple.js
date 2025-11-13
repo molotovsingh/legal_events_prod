@@ -1,16 +1,16 @@
 // API configuration - derive from environment or window.location
 const API_URL = (() => {
-    // Try to get from environment variable (set by build process)
-    if (typeof window !== 'undefined' && window.API_BASE_URL) {
-        return window.API_BASE_URL;
+    try {
+        const base = (typeof window !== 'undefined' && typeof window.API_BASE_URL === 'string')
+            ? window.API_BASE_URL.trim().replace(/\/$/, '')
+            : '';
+        return base; // '' => use relative paths
+    } catch (_) {
+        return '';
     }
-    // Fallback to current origin + /api or localhost:8000
-    const origin = window.location.origin;
-    if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
-        return 'http://localhost:8000';
-    }
-    return origin;
 })();
+
+try { axios.defaults.baseURL = API_URL || undefined; } catch (_) {}
 
 // Wrap in IIFE to avoid global pollution
 (function() {
@@ -74,8 +74,33 @@ axios.interceptors.response.use(
     }
 );
 
+// Debug badge for resolved API URL with quick copy
+function renderApiBadge() {
+    try {
+        const el = document.getElementById('apiBadge');
+        if (!el) return;
+        el.textContent = '';
+        const span = document.createElement('span');
+        span.className = 'bg-gray-100 text-gray-700 px-2 py-1 rounded border border-gray-200';
+        span.textContent = `API: ${API_URL || 'same-origin'}`;
+        const btn = document.createElement('button');
+        btn.className = 'ml-2 text-blue-600 underline';
+        btn.textContent = 'Copy';
+        btn.addEventListener('click', async () => {
+            try {
+                await navigator.clipboard.writeText(API_URL || window.location.origin);
+                btn.textContent = 'Copied!';
+                setTimeout(() => btn.textContent = 'Copy', 1000);
+            } catch (_) {}
+        });
+        el.appendChild(span);
+        el.appendChild(btn);
+    } catch (_) {}
+}
+
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', async () => {
+    renderApiBadge();
     // Load providers first since they don't require auth
     try {
         await loadProviders();
@@ -165,7 +190,9 @@ async function checkAuthStatus() {
     }
 
     try {
-        await axios.get(`${API_URL}/v1/auth/me`);
+        await axios.get(`${API_URL}/v1/auth/me`, {
+            headers: { 'Authorization': `Bearer ${authToken}` }
+        });
         currentUser = { authenticated: true };
         updateAuthUI();
     } catch (error) {
@@ -192,7 +219,9 @@ let providersLoaded = false; // Flag to prevent duplicate event listeners
 
 async function loadProviders() {
     try {
-        const response = await axios.get(`${API_URL}/v1/providers`);
+        const response = await axios.get(`${API_URL}/v1/providers`, {
+            headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {}
+        });
         const providerSelect = document.getElementById('providerSelect');
         providerSelect.innerHTML = '';
 
@@ -233,7 +262,9 @@ async function loadProviders() {
 
 async function loadModels(providerKey) {
     try {
-        const response = await axios.get(`${API_URL}/v1/models?provider=${providerKey}`);
+        const response = await axios.get(`${API_URL}/v1/models?provider=${providerKey}`, {
+            headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {}
+        });
         const modelSelect = document.getElementById('modelSelect');
         
         modelSelect.innerHTML = '';
@@ -274,13 +305,17 @@ async function initializeQuickStart() {
     if (lastClientId && lastCaseId) {
         try {
             // Verify client exists
-            const clientResponse = await axios.get(`${API_URL}/v1/clients/${lastClientId}`);
+            const clientResponse = await axios.get(`${API_URL}/v1/clients/${lastClientId}`, {
+                headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {}
+            });
             if (!clientResponse.data) {
                 throw new Error('Client not found');
             }
             
             // Verify case exists and belongs to client
-            const caseResponse = await axios.get(`${API_URL}/v1/cases/${lastCaseId}`);
+            const caseResponse = await axios.get(`${API_URL}/v1/cases/${lastCaseId}`, {
+                headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {}
+            });
             if (!caseResponse.data || caseResponse.data.client_id !== parseInt(lastClientId)) {
                 throw new Error('Case not found or invalid');
             }
@@ -342,7 +377,11 @@ async function createClient() {
     statusDiv.innerHTML = '<span class="text-blue-600"><span class="spinner"></span> Creating...</span>';
 
     try {
-        const response = await axios.post(`${API_URL}/v1/clients`, { name: clientName });
+        const response = await axios.post(`${API_URL}/v1/clients`, { 
+            name: clientName 
+        }, {
+            headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {}
+        });
         lastClientId = response.data.id;
         localStorage.setItem('last_client_id', lastClientId);
 
@@ -352,7 +391,9 @@ async function createClient() {
         // Update quick start
         document.getElementById('quickClientId').value = lastClientId;
     } catch (error) {
-        statusDiv.innerHTML = `<span class="text-red-600">Error: ${error.response?.data?.detail || 'Failed'}</span>`;
+        console.error('Client creation error:', error);
+        const errorMsg = error.response?.data?.detail || error.message || 'Failed to create client';
+        statusDiv.innerHTML = `<span class="text-red-600">Error: ${errorMsg}</span>`;
     }
 }
 
@@ -372,6 +413,8 @@ async function createCase() {
         const response = await axios.post(`${API_URL}/v1/cases`, {
             client_id: parseInt(clientId),
             name: caseName
+        }, {
+            headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {}
         });
         lastCaseId = response.data.id;
         localStorage.setItem('last_case_id', lastCaseId);
@@ -382,7 +425,9 @@ async function createCase() {
         // Update quick start with validation
         await initializeQuickStart();
     } catch (error) {
-        statusDiv.innerHTML = `<span class="text-red-600">Error: ${error.response?.data?.detail || 'Failed'}</span>`;
+        console.error('Case creation error:', error);
+        const errorMsg = error.response?.data?.detail || error.message || 'Failed to create case';
+        statusDiv.innerHTML = `<span class="text-red-600">Error: ${errorMsg}</span>`;
     }
 }
 
@@ -390,6 +435,12 @@ async function startRun() {
     const caseId = document.getElementById('caseIdForRun').value;
     const files = document.getElementById('fileInput').files;
     const statusDiv = document.getElementById('uploadStatus');
+
+    if (!authToken) {
+        showLoginModal();
+        statusDiv.innerHTML = '<span class="text-red-600">Login required to start processing</span>';
+        return;
+    }
 
     if (!caseId || files.length === 0) {
         statusDiv.innerHTML = '<span class="text-red-600">Case ID and files required</span>';
@@ -425,42 +476,54 @@ async function processRun(caseId, files, statusDiv) {
         }
     }
 
-    statusDiv.innerHTML = '<span class="text-blue-600"><span class="spinner"></span> Uploading...</span>';
+    statusDiv.innerHTML = '<span class="text-blue-600"><span class="spinner"></span> Preparing run...</span>';
 
     try {
-        // Upload files
-        const formData = new FormData();
+        // Step 1: Create run (no files)
+        const runCreate = await axios.post(`${API_URL}/v1/runs`, {
+            case_id: parseInt(caseId),
+            provider: provider,
+            model: model,
+            doc_extractor: docExtractor
+        }, { headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {} });
+
+        currentRunId = runCreate.data.run_id;
+
+        // Step 2: Upload each file to the run
+        const manifest = [];
         for (let file of files) {
-            formData.append('files', file);
+            const fd = new FormData();
+            fd.append('file', file);
+            const upResp = await axios.put(`${API_URL}/v1/runs/${currentRunId}/upload`, fd, {
+                headers: {
+                    'Content-Type': 'multipart/form-data',
+                    ...(authToken ? { 'Authorization': `Bearer ${authToken}` } : {})
+                }
+            });
+            const data = upResp.data;
+            manifest.push({
+                filename: file.name,
+                size_bytes: file.size,
+                sha256: '', // optional: compute if needed
+                storage_key: data.storage_key,
+                mime_type: file.type || 'application/pdf'
+            });
         }
 
-        const uploadResponse = await axios.post(
-            `${API_URL}/v1/cases/${caseId}/documents`,
-            formData,
-            { headers: { 'Content-Type': 'multipart/form-data' } }
-        );
-
-        // Extract file metadata from upload response
-        const filesMetadata = uploadResponse.data.files;
-        statusDiv.innerHTML = `<span class="text-blue-600"><span class="spinner"></span> Starting processing (${filesMetadata.length} files)...</span>`;
-
-        // Start run with file manifest (API expects 'files' not 'document_ids')
-        const runResponse = await axios.post(`${API_URL}/v1/runs`, {
-            case_id: parseInt(caseId),
-            files: filesMetadata,  // Pass file metadata from upload
-            provider: provider,     // Use 'provider' not 'event_extractor_key'
-            model: model,           // Use 'model' not 'model_name'
-            doc_extractor: docExtractor  // Use 'doc_extractor' not 'doc_extractor_key'
+        // Step 3: Start the run
+        await axios.put(`${API_URL}/v1/runs/${currentRunId}/start`, { files: manifest }, {
+            headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {}
         });
 
-        currentRunId = runResponse.data.run_id;  // Fixed: API returns 'run_id' not 'id'
         statusDiv.innerHTML = `<span class="text-green-600">Run ${currentRunId} started</span>`;
 
         // Show results section and start polling
         showResults();
         startPolling();
     } catch (error) {
-        statusDiv.innerHTML = `<span class="text-red-600">Error: ${error.response?.data?.detail || 'Failed'}</span>`;
+        console.error('Run creation error:', error);
+        const errorMsg = error.response?.data?.detail || error.message || 'Failed to start run';
+        statusDiv.innerHTML = `<span class="text-red-600">Error: ${errorMsg}</span>`;
     }
 }
 
@@ -475,7 +538,9 @@ async function refreshResults() {
     if (!currentRunId) return;
 
     try {
-        const response = await axios.get(`${API_URL}/v1/runs/${currentRunId}`);
+        const response = await axios.get(`${API_URL}/v1/runs/${currentRunId}`, {
+            headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {}
+        });
         const run = response.data;
 
         const resultsBadge = document.getElementById('resultsBadge');
@@ -536,7 +601,9 @@ async function refreshResults() {
 
         // Fetch and display events
         if (run.status === 'completed') {
-            const eventsResponse = await axios.get(`${API_URL}/v1/runs/${currentRunId}/events`);
+            const eventsResponse = await axios.get(`${API_URL}/v1/runs/${currentRunId}/events`, {
+                headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {}
+            });
             const events = eventsResponse.data;
 
             if (events.length > 0) {

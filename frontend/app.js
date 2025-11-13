@@ -1,5 +1,56 @@
 // API configuration
-const API_URL = 'http://localhost:8000';
+// Derive dynamically to avoid CORS issues across localhost/127.0.0.1/incognito
+const API_URL = (() => {
+    try {
+        const base = (typeof window !== 'undefined' && typeof window.API_BASE_URL === 'string')
+            ? window.API_BASE_URL.trim().replace(/\/$/, '')
+            : '';
+        // Prefer relative base by default for same-origin; allows absolute override via config.js
+        return base; // '' means use relative paths like '/v1/...'
+    } catch (e) {
+        return '';
+    }
+})();
+
+// Apply axios baseURL for consistency
+try { axios.defaults.baseURL = API_URL || undefined; } catch (_) {}
+
+// Debug badge to show resolved API URL and allow quick copy
+function renderApiBadge() {
+    try {
+        const container = document.getElementById('apiBadge');
+        if (!container) return;
+        container.textContent = '';
+
+        const badge = document.createElement('span');
+        badge.className = 'bg-gray-100 text-gray-700 px-2 py-1 rounded border border-gray-200';
+        badge.textContent = `API: ${API_URL || 'same-origin'}`;
+
+        const copyBtn = document.createElement('button');
+        copyBtn.className = 'ml-2 text-blue-600 hover:underline';
+        copyBtn.textContent = 'Copy';
+        copyBtn.addEventListener('click', async () => {
+            try {
+                await navigator.clipboard.writeText(API_URL || window.location.origin);
+                copyBtn.textContent = 'Copied!';
+                setTimeout(() => (copyBtn.textContent = 'Copy'), 1000);
+            } catch (e) {
+                // Fallback
+                const tmp = document.createElement('input');
+                tmp.value = API_URL;
+                document.body.appendChild(tmp);
+                tmp.select();
+                document.execCommand('copy');
+                document.body.removeChild(tmp);
+                copyBtn.textContent = 'Copied!';
+                setTimeout(() => (copyBtn.textContent = 'Copy'), 1000);
+            }
+        });
+
+        container.appendChild(badge);
+        container.appendChild(copyBtn);
+    } catch (_) { /* no-op */ }
+}
 
 // Initialize DOMPurify with safe configuration
 const purifyConfig = {
@@ -167,6 +218,7 @@ function updateAuthUI() {
 
 // Initialize on load
 document.addEventListener('DOMContentLoaded', function() {
+    renderApiBadge();
     updateAuthUI();
     checkHealth();
     loadProviders();
@@ -251,7 +303,9 @@ async function loadProviders() {
     select.textContent = ''; // Clear existing options
 
     try {
-        const response = await axios.get(`${API_URL}/v1/providers`);
+        const response = await axios.get(`${API_URL}/v1/providers`, {
+            headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {}
+        });
         const providers = response.data.providers;
 
         // Helper function to calculate status from API fields
@@ -311,7 +365,9 @@ async function loadModels(providerId) {
     modelSelect.appendChild(option);
 
     try {
-        const response = await axios.get(`${API_URL}/v1/models`);
+        const response = await axios.get(`${API_URL}/v1/models`, {
+            headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {}
+        });
         const models = response.data.models.filter(m => m.provider === providerId);
 
         modelSelect.textContent = ''; // Clear loading message
@@ -389,6 +445,8 @@ async function createClient() {
         const response = await axios.post(`${API_URL}/v1/clients`, {
             name: name,
             reference_code: `REF-${Date.now()}`
+        }, {
+            headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {}
         });
 
         const client = response.data;
@@ -426,8 +484,9 @@ async function createCase() {
     try {
         const response = await axios.post(`${API_URL}/v1/cases`, {
             client_id: parseInt(clientId),
-            name: caseName,
-            description: 'Test case created from UI'
+            name: caseName
+        }, {
+            headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {}
         });
 
         const caseData = response.data;
@@ -438,7 +497,32 @@ async function createCase() {
         document.getElementById('caseIdForRun').value = caseData.id;
 
     } catch (error) {
-        const errorMsg = error.response?.data?.detail || error.message;
+        // Improved error message extraction
+        let errorMsg = 'Unknown error occurred';
+
+        if (error.response?.data) {
+            // Try to extract detail field (FastAPI standard)
+            if (typeof error.response.data.detail === 'string') {
+                errorMsg = error.response.data.detail;
+            } else if (typeof error.response.data.detail === 'object') {
+                errorMsg = JSON.stringify(error.response.data.detail);
+            } else if (error.response.data.message) {
+                errorMsg = error.response.data.message;
+            } else {
+                errorMsg = JSON.stringify(error.response.data);
+            }
+        } else if (error.message) {
+            errorMsg = error.message;
+        }
+
+        // Add status code specific messages
+        const statusCode = error.response?.status;
+        if (statusCode === 401) {
+            errorMsg = 'Authentication required. Please login first.';
+        } else if (statusCode === 404) {
+            errorMsg = 'Client not found. Please check the Client ID.';
+        }
+
         const resultEl = document.getElementById('caseResult');
         resultEl.textContent = '';
         const span = createTextElement('span', `❌ Error: ${errorMsg}`, 'text-red-600');
@@ -452,6 +536,12 @@ async function startRun() {
     const provider = document.getElementById('providerSelect').value;
     const model = document.getElementById('modelSelect').value;
     const docExtractor = document.getElementById('docExtractorSelect').value;
+
+    if (!authToken) {
+        showLoginModal();
+        alert('Please login to start processing.');
+        return;
+    }
 
     if (!caseId || files.length === 0) {
         alert('Please enter Case ID and select files');
@@ -470,47 +560,53 @@ async function startRun() {
 
     try {
         // Calculate SHA256 hashes for integrity verification
-        const fileHashes = [];
+        const fileHashes = {};
         for (let file of files) {
             try {
                 const hash = await calculateFileSHA256(file);
-                fileHashes.push({ name: file.name, hash: hash });
+                fileHashes[file.name] = hash;
                 console.log(`File: ${file.name}, SHA256: ${hash}`);
             } catch (err) {
                 console.warn(`Could not calculate hash for ${file.name}:`, err);
             }
         }
 
-        // Upload files
-        const formData = new FormData();
+        // Step 1: Create run (no files)
+        const runCreateResp = await axios.post(`${API_URL}/v1/runs`, {
+            case_id: parseInt(caseId),
+            provider: provider || 'openrouter',
+            model: model || null,
+            doc_extractor: docExtractor || 'docling'
+        }, { headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {} });
+
+        const runId = runCreateResp.data.run_id;
+
+        // Step 2: Upload each file via run-specific endpoint
+        const manifest = [];
         for (let file of files) {
-            formData.append('files', file);
+            const fd = new FormData();
+            fd.append('file', file);
+            const upResp = await axios.put(`${API_URL}/v1/runs/${runId}/upload`, fd, {
+                headers: {
+                    'Content-Type': 'multipart/form-data',
+                    ...(authToken ? { 'Authorization': `Bearer ${authToken}` } : {})
+                }
+            });
+            const payload = upResp.data;
+            manifest.push({
+                filename: file.name,
+                size_bytes: file.size,
+                sha256: fileHashes[file.name] || '',
+                storage_key: payload.storage_key,
+                mime_type: file.type || 'application/pdf'
+            });
         }
 
-        const uploadResponse = await axios.post(`${API_URL}/v1/upload`, formData, {
-            headers: {
-                'Content-Type': 'multipart/form-data'
-            }
+        // Step 3: Start run with manifest (requires auth)
+        await axios.put(`${API_URL}/v1/runs/${runId}/start`, { files: manifest }, {
+            headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {}
         });
 
-        const uploadedFiles = uploadResponse.data.files;
-
-        // Create manifest
-        const manifest = uploadedFiles.map(f => ({
-            filename: f.filename,
-            storage_path: f.storage_path
-        }));
-
-        // Start run
-        const runResponse = await axios.post(`${API_URL}/v1/runs`, {
-            case_id: parseInt(caseId),
-            provider: provider || 'openrouter',  // Standardized default (v0.11.0+)
-            model: model || null,
-            doc_extractor: docExtractor || 'docling',
-            files: manifest
-        });
-
-        const runId = runResponse.data.run_id;
         uploadResult.textContent = '';
         const span = createTextElement('span', `✅ Run ${runId} started!`, 'text-green-600');
         uploadResult.appendChild(span);
@@ -520,7 +616,38 @@ async function startRun() {
 
     } catch (error) {
         uploadResult.textContent = '';
-        const errorMsg = error.response?.data?.detail || error.message;
+
+        // Improved error message extraction
+        let errorMsg = 'Unknown error occurred';
+
+        if (error.response?.data) {
+            // Try to extract detail field (FastAPI standard)
+            if (typeof error.response.data.detail === 'string') {
+                errorMsg = error.response.data.detail;
+            } else if (typeof error.response.data.detail === 'object') {
+                errorMsg = JSON.stringify(error.response.data.detail);
+            } else if (error.response.data.message) {
+                errorMsg = error.response.data.message;
+            } else {
+                errorMsg = JSON.stringify(error.response.data);
+            }
+        } else if (error.request) {
+            // Request was made but no response received (network error)
+            errorMsg = 'Cannot connect to API. Please check if the API is running at ' + API_URL;
+        } else if (error.message) {
+            errorMsg = error.message;
+        }
+
+        // Add status code specific messages
+        const statusCode = error.response?.status;
+        if (statusCode === 401) {
+            errorMsg = 'Authentication required. Please login first.';
+        } else if (statusCode === 404) {
+            errorMsg = 'Case not found. Please check the Case ID.';
+        } else if (statusCode === 500) {
+            errorMsg = 'Server error. Please try again or contact support.';
+        }
+
         const span = createTextElement('span', `❌ Error: ${errorMsg}`, 'text-red-600');
         uploadResult.appendChild(span);
     }
@@ -529,7 +656,9 @@ async function startRun() {
 async function monitorRun(runId) {
     const interval = setInterval(async () => {
         try {
-            const response = await axios.get(`${API_URL}/v1/runs/${runId}`);
+            const response = await axios.get(`${API_URL}/v1/runs/${runId}`, {
+                headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {}
+            });
             const run = response.data;
 
             // Update run in list
@@ -553,7 +682,12 @@ async function loadRuns(limit = 20, offset = 0) {
     try {
         // Fetch runs using the new efficient GET /v1/runs endpoint
         const response = await axios.get(`${API_URL}/v1/runs`, {
-            params: { limit, offset }
+            params: {
+                skip: 0,
+                limit: 10,
+                include_metadata: true
+            },
+            headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {}
         });
 
         const runs = response.data.runs;
@@ -707,7 +841,9 @@ function updateRunInList(run) {
 
 async function showRunDetails(runId) {
     try {
-        const response = await axios.get(`${API_URL}/v1/runs/${runId}`);
+        const response = await axios.get(`${API_URL}/v1/runs/${runId}`, {
+            headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {}
+        });
         const run = response.data;
 
         const detailsPanel = document.getElementById('runDetails');
@@ -783,7 +919,9 @@ async function viewRun(runId) {
         // First get run details
         await showRunDetails(runId);
 
-        const response = await axios.get(`${API_URL}/v1/runs/${runId}/events`);
+        const response = await axios.get(`${API_URL}/v1/runs/${runId}/events`, {
+            headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {}
+        });
         const events = response.data.events;
 
         const contentEl = document.getElementById('eventsContent');
