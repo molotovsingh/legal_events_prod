@@ -5,6 +5,93 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] - 2025-11-13
+
+### Added
+- POST /v1/cases/{case_id}/documents endpoint for case-scoped document uploads
+  - Validates case exists before accepting uploads
+  - Returns file metadata in expected format
+  - Reuses secure MinIO upload logic
+- Dynamic API URL resolution in frontend
+  - Eliminates localhost/127.0.0.1 CORS mismatches
+  - Fixes connectivity issues in incognito/private browsing mode
+  - Automatic same-origin detection for local development
+- Debug badge showing resolved API URL with copy functionality
+  - Improves troubleshooting visibility
+  - One-click URL copying for support scenarios
+- Enhanced CORS configuration for local development
+  - Added 127.0.0.1 variants (ports 3000, 3001, 5001, 8000)
+  - Added null origin for file:// protocol testing
+  - Improved development experience across browsers
+
+### Fixed
+- **CRITICAL (P0):** Network error on Process button - field mismatch and worker params
+  - Frontend expected 'id' but API returns 'run_id' (caused "Run undefined started" status)
+  - Polling failed with 404 errors on GET /v1/runs/undefined
+  - Worker job crashed with TypeError on unexpected kwargs (doc_extractor, status params)
+  - Impact: Complete workflow failure when clicking "Process Documents"
+- **CRITICAL (P0):** Client ID/Case ID document upload workflow bug
+  - Frontend called non-existent endpoint POST /v1/cases/{case_id}/documents
+  - All document uploads via simple.html failed with 404 errors
+  - Impact: End-to-end workflow broken at document upload stage
+- **CRITICAL (P0):** Redis connection leaks causing production outages
+  - Health check endpoint leaked connections when Redis unavailable
+  - Retry endpoint leaked connections on idempotency cache hits
+  - Impact: Connection pool exhaustion under load
+- **CRITICAL (P0):** Null pointer error in export generation
+  - Missing null checks on case/client queries caused AttributeError
+  - Impact: Worker crashes when foreign key references deleted
+- **MAJOR (P1):** MinioStorage resource leak in long-running workers
+  - Added MinioStorage.close() method to clear HTTP connection pool
+  - Impact: Prevents connection pool exhaustion in production
+- **MAJOR (P1):** Event consumer infinite loop blocking graceful shutdown
+  - Added running flag to control event listening loop
+  - Impact: Workers can now shut down within timeout window
+- **MAJOR (P1):** Silent error swallowing in event consumer
+  - Failed events now pushed to Redis DLQ (worker:events:dlq)
+  - Impact: Prevents data loss, enables manual recovery
+- **MAJOR (P1):** OpenRouter active_model → model field bug
+  - Fixed AttributeError in fallback event parser
+  - Impact: OpenRouter provider now fully functional
+- Frontend error display showing "[object Object]"
+  - Improved error message extraction from API responses
+  - Added status-code-specific user guidance (401, 404, 500)
+  - Better network error detection with actionable messages
+- Frontend/backend API contract mismatches
+  - Fixed field names: event_extractor_key → provider
+  - Fixed field names: model_name → model
+  - Fixed field names: doc_extractor_key → doc_extractor
+  - Fixed response structure: uploadResponse.data → uploadResponse.data.files
+
+### Changed
+- Provider Architecture (v0.11.0) - COMPLETE
+  - All 6 providers now in unified registry (openrouter, openai, anthropic, deepseek, google, langextract)
+  - Enhanced startup validation instantiates adapters (catches real errors)
+  - Removed legacy catalog validation (single source of truth)
+  - Aligned metadata defaults to openrouter system-wide
+  - Renamed DEFAULT_MODEL → GEMINI_DEFAULT_MODEL (eliminates ambiguity)
+- Job queue integration improved
+  - Changed from job object to job_id return value
+  - Cleaner enqueue_job call signature
+- Content Security Policy enforcement
+  - Removed unsafe-inline from script-src
+  - Moved inline event handlers to external scripts
+  - Improved CSP compliance across both interfaces
+
+### Security
+- **MEDIUM:** CSP hardening with removal of unsafe-inline
+  - All inline event handlers moved to app.js/simple.js
+  - Reduced XSS attack surface
+
+### Documentation
+- Updated OPEN_BUGS_DIGEST.md - All P0 bugs resolved
+- Added AUTH_IMPROVEMENTS_SUMMARY.md - Auth enhancement summary
+- Added LOGIN_FIXED_README.md - Login troubleshooting guide
+- Added QUICK_START_AUTH.md - Fast-track guide for new users
+- Added docs/FRONTEND_ARCHITECTURE.md - Dual interface design rationale
+- Added bug reports for P0 issues (BUG_REPORT_20251112T025945Z.md)
+- Enhanced scripts: reset_dev_password.py, seed_test_users.py, sync_model_catalog.py
+
 ## [0.10.0] - 2025-11-11
 
 ### Added
