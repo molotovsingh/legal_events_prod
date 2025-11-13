@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.1] - 2025-11-13
+
+### Added
+- Type-safe job enqueuing wrapper functions in infra/queue.py
+  - enqueue_process_run() - Eliminates string-based job routing errors
+  - enqueue_process_document() - Type-safe document processing enqueue
+  - enqueue_generate_artifacts() - Type-safe artifact generation enqueue
+- SHA256 file integrity verification in frontend (calculateFileSHA256 helper)
+
+### Fixed
+- Job enqueuing in API now uses type-safe wrappers instead of string keys
+  - Changed from enqueue_job("process_run") to enqueue_process_run()
+  - Prevents runtime errors from typos in job names
+  - Provides compile-time validation of job function signatures
+- Frontend code quality improvements (indentation fixes in simple.js)
+
+### Changed
+- Job routing now uses function references instead of string keys
+  - Impact: Better IDE autocomplete and refactoring support
+  - Impact: Prevents typo-related runtime failures
+
 ## [0.11.0] - 2025-11-13
 
 ### Added
