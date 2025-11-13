@@ -1039,8 +1039,7 @@ async def start_run(
     db.commit()
 
     # Enqueue processing job
-    job_id = enqueue_job(
-        "process_run",
+    job_id = enqueue_process_run(
         run_id=run_id,
         provider=run.provider,
         model=run.model

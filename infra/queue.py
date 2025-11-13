@@ -77,6 +77,22 @@ def enqueue_job(
         raise
 
 
+# Convenience wrappers to avoid string key mismatches
+def enqueue_process_run(**kwargs) -> str:
+    """Enqueue a run processing job."""
+    return enqueue_job("process_run", **kwargs)
+
+
+def enqueue_process_document(**kwargs) -> str:
+    """Enqueue a single document processing job."""
+    return enqueue_job("process_document", **kwargs)
+
+
+def enqueue_generate_artifacts(**kwargs) -> str:
+    """Enqueue run artifact generation job."""
+    return enqueue_job("generate_artifacts", **kwargs)
+
+
 def get_job_status(job_id: str) -> Optional[Dict[str, Any]]:
     """
     Get status of a job

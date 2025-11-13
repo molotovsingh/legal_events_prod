@@ -489,26 +489,27 @@ async function processRun(caseId, files, statusDiv) {
 
         currentRunId = runCreate.data.run_id;
 
-        // Step 2: Upload each file to the run
-        const manifest = [];
-        for (let file of files) {
-            const fd = new FormData();
-            fd.append('file', file);
-            const upResp = await axios.put(`${API_URL}/v1/runs/${currentRunId}/upload`, fd, {
+    // Step 2: Upload each file to the run
+    const manifest = [];
+    for (let file of files) {
+        const fd = new FormData();
+        fd.append('file', file);
+        const upResp = await axios.put(`${API_URL}/v1/runs/${currentRunId}/upload`, fd, {
                 headers: {
                     'Content-Type': 'multipart/form-data',
                     ...(authToken ? { 'Authorization': `Bearer ${authToken}` } : {})
                 }
             });
-            const data = upResp.data;
-            manifest.push({
-                filename: file.name,
-                size_bytes: file.size,
-                sha256: '', // optional: compute if needed
-                storage_key: data.storage_key,
-                mime_type: file.type || 'application/pdf'
-            });
-        }
+        const data = upResp.data;
+        const sha = await calculateFileSHA256(file).catch(() => '');
+        manifest.push({
+            filename: file.name,
+            size_bytes: file.size,
+            sha256: sha,
+            storage_key: data.storage_key,
+            mime_type: file.type || 'application/pdf'
+        });
+    }
 
         // Step 3: Start the run
         await axios.put(`${API_URL}/v1/runs/${currentRunId}/start`, { files: manifest }, {
@@ -525,6 +526,14 @@ async function processRun(caseId, files, statusDiv) {
         const errorMsg = error.response?.data?.detail || error.message || 'Failed to start run';
         statusDiv.innerHTML = `<span class="text-red-600">Error: ${errorMsg}</span>`;
     }
+}
+
+// File integrity helper
+async function calculateFileSHA256(file) {
+    const arrayBuffer = await file.arrayBuffer();
+    const hashBuffer = await crypto.subtle.digest('SHA-256', arrayBuffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
 // Results display
