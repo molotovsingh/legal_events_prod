@@ -1,0 +1,237 @@
+# Software Development Agreement - Extended Version
+
+**MASTER SERVICES AGREEMENT**
+
+This Master Services Agreement ("Agreement") is entered into as of November 14, 2025 ("Effective Date"), by and between:
+
+**ABC CORPORATION**, a Delaware corporation with principal offices at 123 Technology Drive, San Francisco, CA 94105 ("Company"),
+
+and
+
+**JOHN SMITH CONSULTING, LLC**, a California limited liability company with principal offices at 456 Innovation Boulevard, Palo Alto, CA 94301 ("Consultant").
+
+## RECITALS
+
+WHEREAS, the Company desires to engage the Consultant to provide certain software development and consulting services; and
+
+WHEREAS, the Consultant has the necessary expertise, qualifications, and experience to provide such services;
+
+NOW, THEREFORE, in consideration of the mutual covenants and agreements contained herein, and for other good and valuable consideration, the receipt and sufficiency of which are hereby acknowledged, the parties agree as follows:
+
+## 1. SERVICES
+
+### 1.1 Scope of Services
+
+The Consultant shall provide the following services ("Services"):
+
+a) Full-stack web application development using React, Node.js, and PostgreSQL
+b) Database schema design and optimization
+c) API development and integration with third-party services
+d) Code review and quality assurance
+e) Technical documentation and knowledge transfer
+f) Sprint planning and agile methodology implementation
+
+### 1.2 Performance Standards
+
+All Services shall be performed in a professional and workmanlike manner, consistent with industry standards and best practices for software development.
+
+### 1.3 Statement of Work
+
+For each project, the parties shall execute a Statement of Work ("SOW") that specifies:
+- Detailed project scope and deliverables
+- Timeline and milestones
+- Acceptance criteria
+- Specific compensation for the project
+
+## 2. COMPENSATION
+
+### 2.1 Hourly Rate
+
+The Company shall pay the Consultant at the rate of One Hundred Fifty Dollars ($150.00) per hour for Services rendered under this Agreement.
+
+### 2.2 Payment Terms
+
+a) The Consultant shall submit invoices on a bi-weekly basis
+b) Invoices shall include detailed time entries with descriptions of work performed
+c) The Company shall pay all undisputed invoices within thirty (30) days of receipt
+d) Late payments shall accrue interest at the rate of 1.5% per month
+
+### 2.3 Expenses
+
+The Company shall reimburse the Consultant for all reasonable and necessary expenses incurred in connection with the Services, provided such expenses are pre-approved in writing by the Company.
+
+## 3. TERM AND TERMINATION
+
+### 3.1 Term
+
+This Agreement shall commence on the Effective Date and continue for an initial term of six (6) months, unless earlier terminated in accordance with this Section 3.
+
+### 3.2 Renewal
+
+This Agreement shall automatically renew for successive three (3) month periods unless either party provides written notice of non-renewal at least thirty (30) days prior to the end of the then-current term.
+
+### 3.3 Termination for Convenience
+
+Either party may terminate this Agreement for any reason or no reason upon thirty (30) days prior written notice to the other party.
+
+### 3.4 Termination for Cause
+
+Either party may terminate this Agreement immediately upon written notice if the other party:
+
+a) Materially breaches this Agreement and fails to cure such breach within ten (10) days after receipt of written notice thereof;
+b) Becomes insolvent or files for bankruptcy protection;
+c) Engages in fraud, willful misconduct, or gross negligence.
+
+### 3.5 Effect of Termination
+
+Upon termination:
+a) The Consultant shall promptly deliver all work product and Company materials
+b) The Company shall pay for all Services performed through the termination date
+c) Sections 4, 5, 6, and 7 shall survive termination
+
+## 4. CONFIDENTIALITY
+
+### 4.1 Confidential Information
+
+"Confidential Information" means all non-public information disclosed by either party, including but not limited to:
+- Technical data, source code, algorithms, and software
+- Business plans, financial information, and customer lists
+- Trade secrets and proprietary information
+
+### 4.2 Obligations
+
+The receiving party shall:
+a) Maintain the confidentiality of all Confidential Information
+b) Use Confidential Information solely for purposes of this Agreement
+c) Limit disclosure to employees with a legitimate need to know
+d) Protect Confidential Information using the same degree of care used for its own confidential information, but no less than reasonable care
+
+### 4.3 Exceptions
+
+Confidential Information does not include information that:
+a) Is or becomes publicly available through no breach of this Agreement
+b) Is rightfully received from a third party without confidentiality restrictions
+c) Is independently developed without use of Confidential Information
+d) Is required to be disclosed by law or court order
+
+### 4.4 Duration
+
+The confidentiality obligations shall survive for three (3) years after termination of this Agreement.
+
+## 5. INTELLECTUAL PROPERTY
+
+### 5.1 Work Product
+
+All work product, deliverables, inventions, and intellectual property created by the Consultant in connection with the Services ("Work Product") shall be the exclusive property of the Company.
+
+### 5.2 Assignment
+
+The Consultant hereby assigns to the Company all right, title, and interest in and to the Work Product, including all copyrights, patents, trade secrets, and other intellectual property rights.
+
+### 5.3 Pre-Existing Materials
+
+The Consultant retains all rights to any pre-existing materials, tools, or methodologies used in performing the Services, provided that the Company receives a perpetual, royalty-free license to use such materials in connection with the Work Product.
+
+## 6. REPRESENTATIONS AND WARRANTIES
+
+### 6.1 Authority
+
+Each party represents and warrants that:
+a) It has full power and authority to enter into this Agreement
+b) This Agreement constitutes a valid and binding obligation
+c) Execution of this Agreement does not violate any other agreement
+
+### 6.2 Services Warranty
+
+The Consultant represents and warrants that:
+a) Services will be performed in a professional manner
+b) Work Product will be original and not infringe third-party rights
+c) Consultant has the necessary skills and qualifications
+
+### 6.3 Disclaimer
+
+EXCEPT AS EXPRESSLY PROVIDED HEREIN, THE SERVICES AND WORK PRODUCT ARE PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.
+
+## 7. LIMITATION OF LIABILITY
+
+### 7.1 Consequential Damages
+
+IN NO EVENT SHALL EITHER PARTY BE LIABLE FOR INDIRECT, INCIDENTAL, CONSEQUENTIAL, SPECIAL, OR PUNITIVE DAMAGES ARISING OUT OF THIS AGREEMENT.
+
+### 7.2 Liability Cap
+
+THE TOTAL LIABILITY OF EITHER PARTY SHALL NOT EXCEED THE TOTAL FEES PAID OR PAYABLE UNDER THIS AGREEMENT IN THE TWELVE (12) MONTHS PRECEDING THE CLAIM.
+
+### 7.3 Exceptions
+
+The limitations in this Section 7 shall not apply to:
+a) Breach of confidentiality obligations
+b) Infringement of intellectual property rights
+c) Gross negligence or willful misconduct
+
+## 8. INDEPENDENT CONTRACTOR
+
+### 8.1 Relationship
+
+The Consultant is an independent contractor and not an employee, agent, or partner of the Company. The Consultant shall be responsible for all taxes, insurance, and benefits.
+
+### 8.2 No Authority
+
+The Consultant has no authority to bind the Company or make commitments on behalf of the Company.
+
+## 9. GENERAL PROVISIONS
+
+### 9.1 Governing Law
+
+This Agreement shall be governed by the laws of the State of California, without regard to conflicts of law principles.
+
+### 9.2 Dispute Resolution
+
+Any disputes arising under this Agreement shall be resolved through:
+a) Good faith negotiations between the parties
+b) Mediation in San Francisco, California
+c) Binding arbitration in accordance with the AAA Commercial Arbitration Rules
+
+### 9.3 Entire Agreement
+
+This Agreement constitutes the entire agreement between the parties and supersedes all prior agreements, understandings, and communications.
+
+### 9.4 Amendments
+
+This Agreement may be amended only by a written document signed by both parties.
+
+### 9.5 Assignment
+
+Neither party may assign this Agreement without the prior written consent of the other party, except that the Company may assign this Agreement to any successor or acquirer.
+
+### 9.6 Notices
+
+All notices under this Agreement shall be in writing and sent to the addresses specified above or such other addresses as may be designated by written notice.
+
+### 9.7 Severability
+
+If any provision of this Agreement is held invalid or unenforceable, the remaining provisions shall continue in full force and effect.
+
+### 9.8 Waiver
+
+No waiver of any provision shall be deemed a waiver of any other provision or a continuing waiver.
+
+### 9.9 Counterparts
+
+This Agreement may be executed in counterparts, each of which shall be deemed an original.
+
+IN WITNESS WHEREOF, the parties have executed this Agreement as of the Effective Date.
+
+**ABC CORPORATION**
+
+By: _____________________
+Name: Jane Doe
+Title: Chief Technology Officer
+Date: November 14, 2025
+
+**JOHN SMITH CONSULTING, LLC**
+
+By: _____________________
+Name: John Smith
+Title: Principal Consultant
+Date: November 14, 2025

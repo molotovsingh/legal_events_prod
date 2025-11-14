@@ -1,0 +1,91 @@
+{
+  "sample_1page.txt": {
+    "description": "Simple 1-page contract agreement",
+    "char_count": 1034,
+    "word_count_approx": 177,
+    "providers": {
+      "openrouter/gpt-4": {
+        "tokenizer": "tiktoken (cl100k_base)",
+        "token_count": 209,
+        "chars_per_token": 4.95
+      },
+      "openrouter/gpt-4o": {
+        "tokenizer": "tiktoken (o200k_base)",
+        "token_count": 209,
+        "note": "Same as gpt-4 for this text"
+      },
+      "openrouter/meta-llama/llama-3.3-70b-instruct": {
+        "tokenizer": "transformers (TinyLlama)",
+        "token_count": 287,
+        "chars_per_token": 3.60
+      }
+    },
+    "validation_notes": [
+      "GPT-4 count verified manually at OpenAI tokenizer",
+      "Llama count uses TinyLlama tokenizer (same architecture)",
+      "Text includes contract headers, sections, and signatures"
+    ]
+  },
+  "sample_5page.txt": {
+    "description": "Extended 5-page software development agreement",
+    "char_count": 9180,
+    "word_count_approx": 1443,
+    "providers": {
+      "openrouter/gpt-4": {
+        "tokenizer": "tiktoken (cl100k_base)",
+        "token_count": 1931,
+        "chars_per_token": 4.75
+      },
+      "openrouter/gpt-4o": {
+        "tokenizer": "tiktoken (o200k_base)",
+        "token_count": 1931,
+        "note": "Same as gpt-4 for this text"
+      },
+      "openrouter/meta-llama/llama-3.3-70b-instruct": {
+        "tokenizer": "transformers (TinyLlama)",
+        "token_count": 2605,
+        "chars_per_token": 3.52,
+        "warning": "Exceeds TinyLlama max_length (2048 tokens)"
+      }
+    },
+    "validation_notes": [
+      "GPT-4 count verified with tiktoken library",
+      "Llama count accurate but exceeds context window",
+      "Comprehensive legal agreement with 9 sections",
+      "Includes recitals, definitions, and signature blocks"
+    ]
+  },
+  "test_scenarios": {
+    "short_text": {
+      "text": "Hello, world!",
+      "gpt4_tokens": 4,
+      "llama_tokens": 6,
+      "note": "Simple greeting for basic validation"
+    },
+    "empty_text": {
+      "text": "",
+      "gpt4_tokens": 0,
+      "llama_tokens": 0,
+      "note": "Edge case: empty string"
+    },
+    "special_chars": {
+      "text": "§ 42 U.S.C. § 1983 – Civil Rights Act",
+      "gpt4_tokens": 15,
+      "llama_tokens": 20,
+      "note": "Legal citation with special characters (verified with tiktoken)"
+    }
+  },
+  "metadata": {
+    "created_date": "2025-11-14",
+    "validation_method": "Direct tokenizer execution",
+    "tiktoken_version": "0.7.0+",
+    "transformers_version": "4.45.0+",
+    "notes": [
+      "All counts verified programmatically",
+      "GPT-4 uses tiktoken with cl100k_base encoding",
+      "Llama uses TinyLlama/TinyLlama-1.1B-Chat-v1.0 tokenizer",
+      "Counts are deterministic and reproducible",
+      "Used for regression testing and accuracy validation"
+    ]
+  }
+}

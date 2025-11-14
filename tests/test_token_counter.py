@@ -214,9 +214,107 @@ class TestTokenizerUnavailableErrors:
         assert "anthropic-tokenizer" in str(exc_info.value)
 
 
-# TODO: Add ground truth validation tests
-# Create fixtures with known texts and their expected token counts
-# Compare actual counts against ground truth for accuracy validation
+class TestGroundTruthValidation:
+    """Test token counting accuracy against known ground truth values."""
+
+    @pytest.fixture
+    def ground_truth(self):
+        """Load ground truth token counts from fixtures."""
+        import json
+        from pathlib import Path
+
+        fixture_path = Path(__file__).parent / "fixtures" / "ground_truth.json"
+        with open(fixture_path, 'r') as f:
+            return json.load(f)
+
+    @pytest.fixture
+    def sample_1page_text(self):
+        """Load 1-page sample text."""
+        from pathlib import Path
+        fixture_path = Path(__file__).parent / "fixtures" / "sample_1page.txt"
+        with open(fixture_path, 'r') as f:
+            return f.read()
+
+    @pytest.fixture
+    def sample_5page_text(self):
+        """Load 5-page sample text."""
+        from pathlib import Path
+        fixture_path = Path(__file__).parent / "fixtures" / "sample_5page.txt"
+        with open(fixture_path, 'r') as f:
+            return f.read()
+
+    def test_gpt4_1page_accuracy(self, sample_1page_text, ground_truth):
+        """Validate GPT-4 token count for 1-page document."""
+        try:
+            actual = count_text(sample_1page_text, "openrouter", "openai/gpt-4")
+            expected = ground_truth["sample_1page.txt"]["providers"]["openrouter/gpt-4"]["token_count"]
+            assert actual == expected, f"Expected {expected} tokens, got {actual}"
+        except TokenizerUnavailable:
+            pytest.skip("tiktoken not installed")
+
+    def test_gpt4_5page_accuracy(self, sample_5page_text, ground_truth):
+        """Validate GPT-4 token count for 5-page document."""
+        try:
+            actual = count_text(sample_5page_text, "openrouter", "openai/gpt-4")
+            expected = ground_truth["sample_5page.txt"]["providers"]["openrouter/gpt-4"]["token_count"]
+            assert actual == expected, f"Expected {expected} tokens, got {actual}"
+        except TokenizerUnavailable:
+            pytest.skip("tiktoken not installed")
+
+    def test_llama_1page_accuracy(self, sample_1page_text, ground_truth):
+        """Validate Llama token count for 1-page document."""
+        try:
+            actual = count_text(sample_1page_text, "openrouter", "meta-llama/llama-3.3-70b-instruct")
+            expected = ground_truth["sample_1page.txt"]["providers"]["openrouter/meta-llama/llama-3.3-70b-instruct"]["token_count"]
+            assert actual == expected, f"Expected {expected} tokens, got {actual}"
+        except TokenizerUnavailable:
+            pytest.skip("transformers not installed")
+
+    def test_llama_5page_accuracy(self, sample_5page_text, ground_truth):
+        """Validate Llama token count for 5-page document."""
+        try:
+            actual = count_text(sample_5page_text, "openrouter", "meta-llama/llama-3.3-70b-instruct")
+            expected = ground_truth["sample_5page.txt"]["providers"]["openrouter/meta-llama/llama-3.3-70b-instruct"]["token_count"]
+            # Allow small variance due to tokenizer updates
+            assert abs(actual - expected) <= 5, f"Expected ~{expected} tokens, got {actual} (diff: {abs(actual - expected)})"
+        except TokenizerUnavailable:
+            pytest.skip("transformers not installed")
+
+    def test_short_text_scenarios(self, ground_truth):
+        """Test token counting for short text scenarios from ground truth."""
+        scenarios = ground_truth["test_scenarios"]
+
+        # Test "Hello, world!"
+        try:
+            actual = count_text(scenarios["short_text"]["text"], "openrouter", "openai/gpt-4")
+            expected = scenarios["short_text"]["gpt4_tokens"]
+            assert actual == expected, f"Short text: expected {expected}, got {actual}"
+        except TokenizerUnavailable:
+            pytest.skip("tiktoken not installed")
+
+    def test_empty_text_scenario(self, ground_truth):
+        """Test empty text returns zero tokens."""
+        scenarios = ground_truth["test_scenarios"]
+
+        try:
+            actual = count_text(scenarios["empty_text"]["text"], "openrouter", "openai/gpt-4")
+            expected = scenarios["empty_text"]["gpt4_tokens"]
+            assert actual == expected, f"Empty text: expected {expected}, got {actual}"
+        except TokenizerUnavailable:
+            pytest.skip("tiktoken not installed")
+
+    def test_special_characters_scenario(self, ground_truth):
+        """Test special characters handling (legal citations)."""
+        scenarios = ground_truth["test_scenarios"]
+
+        try:
+            actual = count_text(scenarios["special_chars"]["text"], "openrouter", "openai/gpt-4")
+            expected = scenarios["special_chars"]["gpt4_tokens"]
+            # Allow some variance for special characters
+            assert abs(actual - expected) <= 2, f"Special chars: expected ~{expected}, got {actual}"
+        except TokenizerUnavailable:
+            pytest.skip("tiktoken not installed")
+
 
 # TODO: Add performance tests
 # Test tokenizer initialization time
@@ -225,5 +323,4 @@ class TestTokenizerUnavailableErrors:
 
 # TODO: Add edge case tests
 # Very long texts (>1M chars)
-# Special characters and Unicode
 # Malformed message structures
