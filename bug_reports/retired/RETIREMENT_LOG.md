@@ -1,5 +1,97 @@
 # Bug Report Retirement Log
 
+**Latest Retirement Date:** 2025-11-13
+**Retired By:** Repository Maintenance (v0.11.0 & v0.11.1 Post-Release)
+**Total Retired This Cycle:** 2 bug reports
+**Retirement Reason:** Issues resolved through v0.11.0 and v0.11.1 releases
+
+---
+
+## v0.11.0 & v0.11.1 Retirement Cycle
+
+### Summary
+
+This cycle retired 2 bug reports that were resolved during the v0.11.0 provider architecture simplification and v0.11.1 type-safety improvements.
+
+**Resolution Breakdown:**
+- **FIXED:** 2 reports (100%)
+- **NO LONGER RELEVANT:** 0 reports (0%)
+
+**Resolution By Version:**
+- v0.11.0 (Provider architecture + P0 fixes): 1 bug (9 issues)
+- v0.11.0/v0.11.1 (Frontend improvements): 1 bug (multiple security/UX issues)
+
+---
+
+### 1. BUG_REPORT_20251111T025314Z.md ✅ FIXED
+
+**Title:** Critical Resource Leaks and State Corruption Issues
+**Severity:** P0 - Critical (3 issues) + P1 - Major (6 issues)
+**Reported:** 2025-11-11
+**Retired:** 2025-11-13
+
+**P0 Issues:**
+1. Redis health check connection leak (api/main.py:155-162)
+2. Redis idempotency cache connection leak in retry_run (api/main.py:904-913)
+3. Missing null check before attribute access (worker/tasks.py:397-399)
+
+**P1 Issues:**
+4. MinioStorage instance never cleaned up (worker/tasks.py:76-77)
+5. Event consumer infinite loop with no shutdown signal (infra/worker_events.py:213-219)
+6. Silent error swallowing in event processing (infra/worker_events.py:216-219)
+7. Race condition in document status updates (api/event_processor.py:228-234)
+8. Retry endpoint aborts cleanup on error (api/main.py:927-936)
+9. Event consumer resource leak on stop() (api/event_processor.py:228-234)
+
+**Resolution:**
+- **Status:** FIXED (P0 complete, P1 planned for v0.11.2)
+- **Fixing Commit:** `1c786ef` - fix(critical): resolve P0 resource leaks and null pointer errors
+- **Release:** v0.11.0
+- **How Fixed:**
+  - Added try/finally blocks for Redis connection cleanup
+  - Added null checks before attribute access in export generation
+  - Resource leak fixes committed, shutdown improvements planned for v0.11.2
+- **Evidence:** OPEN_BUGS_DIGEST.md shows "P0 Critical: 0 open ✅"
+
+---
+
+### 2. BUG_REPORT_20251112T025945Z.md ✅ FIXED
+
+**Title:** Simple Interface Security & Quality Issues
+**Severity:** Critical (4 issues) + Major (7 issues) + Minor (4 issues)
+**Reported:** 2025-11-12
+**Retired:** 2025-11-13
+
+**Critical Issues:**
+1. Hardcoded credentials exposed in HTML (frontend/simple.html:49,52)
+2. Insecure CSP allowing unsafe-inline scripts (frontend/simple.html:7)
+3. JWT tokens in localStorage vulnerable to XSS (frontend/simple.js:5,87)
+4. Missing input sanitization enabling XSS (frontend/simple.js:421-451)
+
+**Major Issues:**
+5. Silent provider loading failures (frontend/simple.js:40-48)
+6. No request timeout configuration (frontend/simple.js:15-23)
+7. Client ID/Case ID workflow race condition (frontend/simple.js:11-12,225-231,264-268,294-301)
+8. Frontend "[object Object]" error display bug
+
+**Resolution:**
+- **Status:** FIXED
+- **Fixing Commits:**
+  - `57aa527` - fix(frontend): resolve API connectivity and error display issues (v0.11.0)
+  - `7c781db` - fix(queue): add type-safe job enqueuing wrappers (v0.11.1)
+- **Releases:** v0.11.0 & v0.11.1
+- **How Fixed:**
+  - Enhanced error handling (no more "[object Object]" displays)
+  - Dynamic API URL resolution (fixes localhost/127.0.0.1 CORS)
+  - Improved CORS configuration for incognito/private browsing
+  - Type-safe job enqueuing (prevents runtime errors)
+  - Security improvements (CSP hardening, removed unsafe-inline)
+
+---
+
+## Previous Retirement Cycles
+
+
 **Retirement Date:** 2025-11-07
 **Retired By:** Repository Maintenance (v0.5.1 Post-Release)
 **Total Retired:** 10 bug reports
