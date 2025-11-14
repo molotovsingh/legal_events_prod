@@ -426,6 +426,13 @@ class LegalEventsPipeline:
                     "document_reference": event_record.document_reference
                 }
 
+                # Include adapter-provided usage tokens if available (for downstream cost reporting)
+                try:
+                    if isinstance(event_record.attributes, dict) and event_record.attributes.get("usage"):
+                        event_dict["usage"] = event_record.attributes.get("usage")
+                except Exception:
+                    pass
+
                 # Add timing columns if timing is enabled and available
                 if timing_enabled and docling_seconds is not None:
                     event_dict["docling_seconds"] = docling_seconds

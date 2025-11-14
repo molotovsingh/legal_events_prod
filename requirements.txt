@@ -38,6 +38,11 @@ google-generativeai>=0.8.0
 requests>=2.32.0
 python-dateutil>=2.9.0
 
+# Tokenizers for accurate token counting (pre-run + post-run)
+tiktoken>=0.7.0
+transformers>=4.45.0
+sentencepiece>=0.1.99
+
 # Document Processing
 PyMuPDF>=1.24.0  # For PDF text extraction (fitz module)
 extract-msg>=0.48.0  # For MS Office document parsing (MSG, MSG files)

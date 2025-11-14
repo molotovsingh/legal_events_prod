@@ -261,6 +261,7 @@ class OpenRouterEventExtractor:
 
             # Convert to EventRecord instances
             event_records = []
+            usage = response_data.get("usage") if isinstance(response_data, dict) else None
             for i, event_data in enumerate(events_data, 1):
                 if not isinstance(event_data, dict):
                     continue
@@ -277,6 +278,15 @@ class OpenRouterEventExtractor:
                     "model": self.config.model,
                     "original_response": event_data
                 }
+                if usage:
+                    try:
+                        attributes["usage"] = {
+                            "prompt_tokens": usage.get("prompt_tokens"),
+                            "completion_tokens": usage.get("completion_tokens"),
+                            "total_tokens": usage.get("total_tokens"),
+                        }
+                    except Exception:
+                        pass
 
                 event_record = EventRecord(
                     number=i,

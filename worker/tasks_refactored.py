@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 from core.legal_pipeline_refactored import LegalEventsPipeline
+from core.token_counter import count_text, TokenizerUnavailable
 from core.constants import FIVE_COLUMN_HEADERS
 
 # Import worker-owned dependencies
@@ -128,6 +129,28 @@ def process_run(run_id: int, provider: str = "openrouter", model: str = None) ->
             runtime_model=model,
             doc_extractor=doc_extractor
         )
+
+        # Optional document classification (Layer 1.5)
+        classification_enabled = False
+        classification_model = None
+        classifier = None
+        try:
+            meta = getattr(run, 'run_metadata', None) or {}
+            classification_enabled = bool(meta.get('enable_classification', False))
+            classification_model = meta.get('classification_model')
+            if classification_enabled:
+                # Default to recommended Llama 70B if not specified
+                classification_model = classification_model or 'meta-llama/llama-3.3-70b-instruct'
+                from core.classification_factory import create_classifier
+                from core.prompt_registry import get_default_variant
+                classifier = create_classifier(
+                    model_id=classification_model,
+                    prompt_variant=get_default_variant()
+                )
+                logger.info(f"🧭 Classification enabled with model: {classification_model}")
+        except Exception as e:
+            logger.warning(f"Classification disabled due to error initializing classifier: {e}")
+            classification_enabled = False
         
         # Track processing stats
         stats = {
@@ -142,6 +165,12 @@ def process_run(run_id: int, provider: str = "openrouter", model: str = None) ->
         }
         
         # Process each document
+        classification_results = {}
+        token_usage = {}
+        total_event_prompt = 0
+        total_event_completion = 0
+        total_cls_prompt = 0
+        total_cls_completion = 0
         for doc in documents:
             tmp_path = None
             try:
@@ -177,6 +206,33 @@ def process_run(run_id: int, provider: str = "openrouter", model: str = None) ->
                 file_obj = FileWrapper(tmp_path, doc.filename)
                 df, warning = pipeline.process_documents_for_legal_events([file_obj])
 
+                # Extract plain text once for token counting fallbacks and classification
+                from pathlib import Path as _P
+                extracted_doc = pipeline.document_extractor.extract(_P(tmp_path))
+                extracted_text = extracted_doc.plain_text or extracted_doc.markdown or ''
+
+                # If classification is enabled, run it on the extracted text
+                if classification_enabled and classifier is not None:
+                    try:
+                        text_for_cls = extracted_text
+                        cls_result = classifier.classify(text_for_cls, document_title=doc.filename)
+                        # Persist in memory; uploaded as artifact at end of run
+                        classification_results[doc.filename] = {
+                            'primary': cls_result.get('primary'),
+                            'confidence': cls_result.get('confidence'),
+                            'model': cls_result.get('model'),
+                            'prompt_version': cls_result.get('prompt_version'),
+                            'prompt_tokens': cls_result.get('prompt_tokens'),
+                            'completion_tokens': cls_result.get('completion_tokens')
+                        }
+                        # Accumulate classifier token usage if present
+                        if cls_result.get('prompt_tokens') is not None:
+                            total_cls_prompt += int(cls_result.get('prompt_tokens') or 0)
+                        if cls_result.get('completion_tokens') is not None:
+                            total_cls_completion += int(cls_result.get('completion_tokens') or 0)
+                    except Exception as ce:
+                        logger.warning(f"Classification skipped for {doc.filename}: {ce}")
+
                 # Convert DataFrame to event records
                 # CRITICAL: Rename display headers back to internal field names
                 if not df.empty:
@@ -201,6 +257,37 @@ def process_run(run_id: int, provider: str = "openrouter", model: str = None) ->
                 # WRITE events (worker's primary output)
                 # Batch all events into single transaction
                 events_created = 0
+                # Always try to capture event token usage, even if no events were extracted
+                try:
+                    ev_usage = None
+                    if results and results.get("events") and len(results["events"]) > 0:
+                        first = results["events"][0]
+                        ev_usage = first.get("usage")
+                    if ev_usage:
+                        ev_prompt = int(ev_usage.get("prompt_tokens") or 0)
+                        ev_completion = int(ev_usage.get("completion_tokens") or 0)
+                        total_event_prompt += ev_prompt
+                        total_event_completion += ev_completion
+                        token_usage[doc.filename] = token_usage.get(doc.filename, {})
+                        token_usage[doc.filename]["event"] = {
+                            "prompt_tokens": ev_prompt,
+                            "completion_tokens": ev_completion
+                        }
+                    else:
+                        # Fallback: count prompt tokens from extracted text when no events/usage present
+                        try:
+                            ev_prompt = count_text(extracted_text, provider, model)
+                            total_event_prompt += ev_prompt
+                            token_usage[doc.filename] = token_usage.get(doc.filename, {})
+                            token_usage[doc.filename]["event"] = {
+                                "prompt_tokens": ev_prompt,
+                                "completion_tokens": 0
+                            }
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+
                 if results and results.get("events"):
                     events_to_add = []
                     try:
@@ -217,6 +304,7 @@ def process_run(run_id: int, provider: str = "openrouter", model: str = None) ->
                                 confidence_score=event_data.get("confidence_score")
                             )
                             events_to_add.append(event)
+                        # (Token usage already captured above; nothing to do here.)
                         
                         # Single atomic operation: add all events and commit
                         if events_to_add:
@@ -269,6 +357,101 @@ def process_run(run_id: int, provider: str = "openrouter", model: str = None) ->
                     logger.warning(f"Failed to cleanup temp file {tmp_path}: {_e}")
         
         # Calculate final stats
+        # Compute cost from model catalog pricing
+        try:
+            from core.model_catalog import get_model_catalog
+            catalog = get_model_catalog()
+            pricing_ev = catalog.get_pricing(model)
+            ev_in = float(pricing_ev["cost_input_per_1m"]) if pricing_ev else 0.0
+            ev_out = float(pricing_ev["cost_output_per_1m"]) if pricing_ev else 0.0
+        except Exception:
+            ev_in = 0.0
+            ev_out = 0.0
+        cls_in = 0.0
+        cls_out = 0.0
+        if classification_enabled and classification_model:
+            try:
+                from core.model_catalog import get_model_catalog
+                catalog = get_model_catalog()
+                pricing_cls = catalog.get_pricing(classification_model)
+                cls_in = float(pricing_cls["cost_input_per_1m"]) if pricing_cls else 0.0
+                cls_out = float(pricing_cls["cost_output_per_1m"]) if pricing_cls else 0.0
+            except Exception:
+                pass
+
+        cost_usd = (
+            (total_event_prompt/1_000_000.0) * ev_in + (total_event_completion/1_000_000.0) * ev_out +
+            (total_cls_prompt/1_000_000.0) * cls_in + (total_cls_completion/1_000_000.0) * cls_out
+        )
+
+        # Persist token usage artifact
+        try:
+            usage_payload = {
+                "per_document": token_usage,
+                "totals": {
+                    "event_prompt_tokens": total_event_prompt,
+                    "event_completion_tokens": total_event_completion,
+                    "classification_prompt_tokens": total_cls_prompt,
+                    "classification_completion_tokens": total_cls_completion,
+                    "cost_usd": cost_usd
+                },
+                "models": {
+                    "event": model,
+                    "classification": classification_model if classification_enabled else None
+                }
+            }
+            key = f"runs/{run_id}/artifacts/token_usage.json"
+            storage.upload_bytes(key, json.dumps(usage_payload).encode('utf-8'))
+            artifact = Artifact(
+                run_id=run_id,
+                kind='token_usage_json',
+                storage_key=key,
+                size_bytes=len(json.dumps(usage_payload))
+            )
+            db.add(artifact)
+            db.commit()
+            stats["artifacts_created"] += 1
+        except Exception as e:
+            db.rollback()
+            logger.warning(f"Failed to persist token usage artifact: {e}")
+
+        # Persist classification results artifact (if any)
+        try:
+            if classification_results:
+                # Build storage key and save JSON
+                case = db.query(Case).filter(Case.id == run.case_id).first()
+                client_id = case.client_id if case else 0
+                cls_key = f"clients/{client_id}/cases/{run.case_id}/runs/{run_id}/artifacts/classification.json"
+                storage.upload_bytes(cls_key, json.dumps(classification_results).encode('utf-8'))
+                cls_artifact = Artifact(
+                    run_id=run_id,
+                    kind='classification_json',
+                    storage_key=cls_key,
+                    size_bytes=len(json.dumps(classification_results))
+                )
+                db.add(cls_artifact)
+                db.commit()
+                stats["artifacts_created"] += 1
+        except Exception as e:
+            db.rollback()
+            logger.warning(f"Failed to persist classification artifact: {e}")
+
+        # Update run metadata and cost
+        try:
+            meta = run.run_metadata or {}
+            meta["token_usage"] = {
+                "event_prompt": total_event_prompt,
+                "event_completion": total_event_completion,
+                "classification_prompt": total_cls_prompt,
+                "classification_completion": total_cls_completion,
+                "cost_usd": cost_usd
+            }
+            run.run_metadata = meta
+            run.cost_usd = cost_usd
+            db.commit()
+        except Exception as e:
+            db.rollback()
+            logger.warning(f"Failed to persist run token metadata: {e}")
         end_time = datetime.utcnow()
         total_time = (end_time - start_time).total_seconds()
         

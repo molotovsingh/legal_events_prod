@@ -134,6 +134,16 @@ class OpenRouterClassifier:
             f"(confidence={parsed['confidence']:.2f}, latency={latency:.2f}s)"
         )
 
+        # Attach token usage if provided by OpenRouter
+        usage = response_data.get("usage") if isinstance(response_data, dict) else None
+        if usage:
+            try:
+                parsed["prompt_tokens"] = usage.get("prompt_tokens")
+                parsed["completion_tokens"] = usage.get("completion_tokens")
+                parsed["total_tokens"] = usage.get("total_tokens")
+            except Exception:
+                pass
+
         return parsed
 
     def _build_prompt(

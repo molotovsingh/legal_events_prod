@@ -25,6 +25,7 @@ from .schemas import *
 from infra.storage import MinioStorage
 from infra.storage_keys import generate_document_key, generate_artifact_key
 from infra.queue import enqueue_job, enqueue_process_run
+from core.token_counter import count_text, TokenizerUnavailable
 from core.constants import FIVE_COLUMN_HEADERS
 from core.event_extractor_catalog import get_event_extractor_catalog
 # ✅ Authentication enabled - requires valid JWT Bearer token
@@ -353,6 +354,169 @@ async def list_providers(
             status_code=500,
             detail=f"Internal server error. Please contact support with reference: {correlation_id}"
         )
+
+
+@app.get("/v1/classifiers", response_model=ClassifierListResponse)
+async def list_classifiers():
+    """
+    List available document classification models (OpenRouter-based).
+    Returns only enabled models from the classification catalog filtered to provider 'openrouter'.
+    """
+    try:
+        from core.classification_catalog import list_classification_models
+
+        models = list_classification_models(enabled=True, provider="openrouter")
+        payload = [
+            {
+                "model_id": m.model_id,
+                "display_name": m.display_name,
+                "provider": m.provider,
+                "recommended": m.recommended,
+            }
+            for m in models
+        ]
+        return {
+            "models": payload,
+            "count": len(payload),
+            "timestamp": datetime.utcnow()
+        }
+    except Exception as e:
+        correlation_id = str(uuid.uuid4())[:8]
+        logger.error(f"Error listing classifiers (correlation_id: {correlation_id}): {e}")
+        raise HTTPException(status_code=500, detail="Failed to list classifiers")
+
+
+@app.post("/v1/estimate-tokens", response_model=TokenEstimateResponse)
+async def estimate_tokens(payload: TokenEstimateRequest):
+    """
+    Accurate pre-run input token estimation using provider/model tokenizers.
+
+    - Runs Docling-only extraction on uploaded files (MinIO temp storage)
+    - Counts exact input tokens for the selected provider/model
+    - Optionally counts classification input tokens on an excerpt
+    - Converts tokens→$ using static pricing from model_catalog
+    """
+    from core.extractor_factory import create_default_extractors
+    from core.model_catalog import get_model_catalog
+    import tempfile, os
+    from pathlib import Path as _P
+
+    provider = payload.provider
+    model = payload.model
+    doc_extractor_id = payload.doc_extractor or "docling"
+    enable_cls = bool(payload.enable_classification)
+    cls_model = payload.classification_model or "meta-llama/llama-3.3-70b-instruct"
+
+    if not payload.files:
+        raise HTTPException(status_code=400, detail="No files provided")
+
+    # Initialize Docling extractor only (event extractor unused here)
+    doc_extractor, _ = create_default_extractors(provider, runtime_model=model, doc_extractor_override=doc_extractor_id)
+
+    storage = MinioStorage()
+    per_doc: list[PerDocTokenEstimate] = []
+    total_event_tokens = 0
+    total_cls_tokens = 0
+
+    for f in payload.files:
+        tmp_path = None
+        try:
+            data = storage.download_bytes(f.storage_key)
+            if data is None:
+                raise RuntimeError(f"Failed to download {f.storage_key}")
+            suffix = os.path.splitext(f.filename)[1] or ""
+            with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+                tmp.write(data)
+                tmp_path = tmp.name
+
+            extracted = doc_extractor.extract(_P(tmp_path))
+            text = extracted.plain_text or extracted.markdown or ""
+
+            try:
+                ev_tokens = count_text(text, provider, model)
+            except TokenizerUnavailable as te:
+                raise HTTPException(status_code=400, detail=str(te))
+
+            cls_tokens = None
+            if enable_cls:
+                excerpt = (text or "")[:2000]
+                try:
+                    cls_tokens = count_text(excerpt, "openrouter", cls_model)
+                except TokenizerUnavailable as te:
+                    raise HTTPException(status_code=400, detail=f"Classification tokenizer unavailable: {te}")
+
+            per_doc.append(PerDocTokenEstimate(
+                filename=f.filename,
+                event_input_tokens=ev_tokens,
+                classification_input_tokens=cls_tokens
+            ))
+            total_event_tokens += ev_tokens
+            if cls_tokens:
+                total_cls_tokens += cls_tokens
+        finally:
+            try:
+                if tmp_path and os.path.exists(tmp_path):
+                    os.unlink(tmp_path)
+            except Exception:
+                pass
+
+    # Compute input-only cost from model catalog pricing
+    catalog = get_model_catalog()
+    pricing_event = catalog.get_pricing(model)
+    ev_in = float(pricing_event["cost_input_per_1m"]) if pricing_event else 0.0
+    cost_input_usd = (total_event_tokens / 1_000_000.0) * ev_in
+    pricing_cls = None
+    if enable_cls and total_cls_tokens > 0:
+        pricing_cls = catalog.get_pricing(cls_model)
+        cls_in = float(pricing_cls["cost_input_per_1m"]) if pricing_cls else 0.0
+        cost_input_usd += (total_cls_tokens / 1_000_000.0) * cls_in
+
+    totals = TokenTotals(
+        event_input_tokens=total_event_tokens,
+        classification_input_tokens=total_cls_tokens,
+        total_input_tokens=total_event_tokens + total_cls_tokens,
+        cost_input_usd=cost_input_usd,
+        approx=False
+    )
+    # For transparency, return event pricing; classifier pricing if used
+    combined_pricing = {}
+    if pricing_event:
+        combined_pricing["event"] = pricing_event
+    if pricing_cls:
+        combined_pricing["classification"] = pricing_cls
+    pricing_out = combined_pricing if combined_pricing else None
+
+    return TokenEstimateResponse(
+        per_document=per_doc,
+        totals=totals,
+        pricing=pricing_out
+    )
+
+
+@app.post("/v1/uploads/cleanup", response_model=TempCleanupResponse)
+async def cleanup_temp_uploads(req: TempCleanupRequest, current_user: User = Depends(require_auth)):
+    """
+    Delete temporary uploaded objects created for estimation.
+
+    Security: Only deletes keys under the 'temp/' prefix to prevent arbitrary object deletion.
+    """
+    storage = MinioStorage()
+    deleted = 0
+    skipped = 0
+    for key in req.keys or []:
+        try:
+            # Only allow deletion of temp objects
+            if not key.startswith("temp/"):
+                skipped += 1
+                continue
+            ok = storage.delete_object(key)
+            if ok:
+                deleted += 1
+            else:
+                skipped += 1
+        except Exception:
+            skipped += 1
+    return TempCleanupResponse(deleted=deleted, skipped=skipped)
 
 
 # ============================================================================
@@ -746,6 +910,18 @@ current_user: User = Depends(get_current_user)  # Optional auth for testing
 
     user_email = current_user.email if current_user else "anonymous"
     logger.info(f"Created run {db_run.id} for client {case.client_id} by {user_email}")
+
+    # Persist optional classification settings in run_metadata (no schema changes required)
+    try:
+        meta = db_run.run_metadata or {}
+        if run.enable_classification is not None:
+            meta["enable_classification"] = bool(run.enable_classification)
+        if run.classification_model:
+            meta["classification_model"] = run.classification_model
+        db_run.run_metadata = meta
+        db.commit()
+    except Exception as e:
+        logger.warning(f"Failed to persist classification run metadata: {e}")
 
     # If files are provided, create documents and enqueue processing job
     if run.files:
@@ -1159,6 +1335,66 @@ async def get_run_events(
         "next_cursor": next_cursor,
         "has_more": len(events) == limit
     }
+
+
+@app.get("/v1/runs/{run_id}/classification")
+async def get_run_classification(run_id: int, db: Session = Depends(get_db)):
+    """
+    Return per-document classification results if available.
+    Reads artifact 'classification_json' from storage if present.
+    """
+    run = db.query(Run).filter(Run.id == run_id).first()
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    artifact = db.query(Artifact).filter(
+        Artifact.run_id == run_id,
+        Artifact.kind == "classification_json"
+    ).first()
+
+    if not artifact:
+        return {"available": False, "results": {}}
+
+    storage = MinioStorage()
+    try:
+        content_bytes = storage.download_bytes(artifact.storage_key)
+        if content_bytes is None:
+            raise RuntimeError("No content")
+        data = json.loads(content_bytes.decode('utf-8'))
+        return {"available": True, "results": data}
+    except Exception as e:
+        logger.error(f"Failed to read classification artifact for run {run_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to load classification results")
+
+
+@app.get("/v1/runs/{run_id}/token-usage")
+async def get_run_token_usage(run_id: int, db: Session = Depends(get_db)):
+    """
+    Return per-document token usage and totals if available.
+    Reads artifact 'token_usage_json' from storage if present.
+    """
+    run = db.query(Run).filter(Run.id == run_id).first()
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    artifact = db.query(Artifact).filter(
+        Artifact.run_id == run_id,
+        Artifact.kind == "token_usage_json"
+    ).first()
+
+    if not artifact:
+        return {"available": False, "results": {}}
+
+    storage = MinioStorage()
+    try:
+        content_bytes = storage.download_bytes(artifact.storage_key)
+        if content_bytes is None:
+            raise RuntimeError("No content")
+        data = json.loads(content_bytes.decode('utf-8'))
+        return {"available": True, "results": data}
+    except Exception as e:
+        logger.error(f"Failed to read token usage artifact for run {run_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to load token usage")
 
 
 @app.get("/v1/runs/{run_id}/artifacts")

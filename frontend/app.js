@@ -248,6 +248,11 @@ function setupEventListeners() {
         startRunBtn.addEventListener('click', startRun);
     }
 
+    const estimateBtn = document.getElementById('estimateCostBtn');
+    if (estimateBtn) {
+        estimateBtn.addEventListener('click', estimateCost);
+    }
+
     const refreshRunsBtn = document.getElementById('refreshRunsBtn');
     if (refreshRunsBtn) {
         refreshRunsBtn.addEventListener('click', () => loadRuns());
@@ -295,6 +300,73 @@ function setupEventListeners() {
     const exportJsonBtn = document.getElementById('exportJsonBtn');
     if (exportJsonBtn) {
         exportJsonBtn.addEventListener('click', () => exportEvents('json'));
+    }
+}
+
+async function estimateCost() {
+    const files = document.getElementById('fileInput').files;
+    const provider = document.getElementById('providerSelect').value;
+    const model = document.getElementById('modelSelect').value;
+    const docExtractor = document.getElementById('docExtractorSelect').value || 'docling';
+    const enableClassification = document.getElementById('enableClassification')?.checked || false;
+    const classifierModel = document.getElementById('classifierSelect')?.value || null;
+    const previewEl = document.getElementById('costPreview');
+
+    previewEl.textContent = '';
+
+    if (!files || files.length === 0) {
+        previewEl.textContent = 'Select files to estimate cost';
+        return;
+    }
+
+    try {
+        // Upload to temp via /v1/upload (does not create a run)
+        const formData = new FormData();
+        for (let f of files) formData.append('files', f);
+        const uploadResp = await axios.post(`${API_URL}/v1/upload`, formData, {
+            headers: { 'Content-Type': 'multipart/form-data', ...(authToken ? { 'Authorization': `Bearer ${authToken}` } : {}) }
+        });
+        const uploaded = uploadResp.data.files || [];
+        if (uploaded.length === 0) {
+            previewEl.textContent = 'Upload failed';
+            return;
+        }
+
+        // Build estimate request
+        const filesPayload = uploaded.map(u => ({ filename: u.filename, storage_key: u.storage_path, size_bytes: u.size_bytes, mime_type: u.mime_type }));
+        const estReq = {
+            provider: provider || 'openrouter',
+            model: model || 'meta-llama/llama-3.3-70b-instruct',
+            doc_extractor: docExtractor || 'docling',
+            files: filesPayload,
+            enable_classification: enableClassification,
+            classification_model: classifierModel
+        };
+
+        const estResp = await axios.post(`${API_URL}/v1/estimate-tokens`, estReq, { headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {} });
+        const totals = estResp.data.totals;
+        const cost = totals.cost_input_usd != null ? `$${totals.cost_input_usd.toFixed(4)}` : 'N/A';
+        previewEl.textContent = `Input tokens: ${totals.total_input_tokens} (events ${totals.event_input_tokens}${enableClassification ? ` + cls ${totals.classification_input_tokens}` : ''}) • Input cost: ${cost}`;
+    } catch (e) {
+        console.error('Estimate error:', e);
+        previewEl.textContent = (e.response?.data?.detail) || 'Estimate failed';
+    } finally {
+        // Cleanup temporary uploads to avoid storage leaks
+        try {
+            if (authToken && typeof lastUploadedTempFiles !== 'undefined') {
+                // no-op legacy fallback
+            }
+            if (typeof uploaded !== 'undefined' && uploaded.length > 0) {
+                const keys = uploaded.map(u => u.storage_path).filter(Boolean);
+                if (keys.length > 0) {
+                    await axios.post(`${API_URL}/v1/uploads/cleanup`, { keys }, {
+                        headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {}
+                    });
+                }
+            }
+        } catch (cleanupErr) {
+            console.warn('Temp cleanup failed:', cleanupErr);
+        }
     }
 }
 
@@ -403,6 +475,7 @@ async function checkHealth() {
         const health = response.data;
 
         const statusEl = document.getElementById('statusText');
+        if (!statusEl) return; // Header simplified: skip if element not present
         statusEl.textContent = ''; // Clear existing content
 
         if (health.status === 'healthy') {
@@ -427,9 +500,11 @@ async function checkHealth() {
 
     } catch (error) {
         const statusEl = document.getElementById('statusText');
-        statusEl.textContent = '';
-        const span = createTextElement('span', '❌ Cannot connect to API', 'text-red-600');
-        statusEl.appendChild(span);
+        if (statusEl) {
+            statusEl.textContent = '';
+            const span = createTextElement('span', '❌ Cannot connect to API', 'text-red-600');
+            statusEl.appendChild(span);
+        }
         console.error('Health check failed:', error);
     }
 }
@@ -572,11 +647,15 @@ async function startRun() {
         }
 
         // Step 1: Create run (no files)
+        const enableClassification = document.getElementById('enableClassification')?.checked || false;
+        const classifierModel = document.getElementById('classifierSelect')?.value || null;
         const runCreateResp = await axios.post(`${API_URL}/v1/runs`, {
             case_id: parseInt(caseId),
             provider: provider || 'openrouter',
             model: model || null,
-            doc_extractor: docExtractor || 'docling'
+            doc_extractor: docExtractor || 'docling',
+            enable_classification: enableClassification,
+            classification_model: classifierModel
         }, { headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {} });
 
         const runId = runCreateResp.data.run_id;
@@ -870,6 +949,23 @@ async function showRunDetails(runId) {
             { label: 'Estimated Cost', value: run.cost_usd ? `$${run.cost_usd.toFixed(4)}` : 'N/A' }
         ];
 
+        // Try to load token usage totals and append a compact summary
+        try {
+            const usageResp = await axios.get(`${API_URL}/v1/runs/${runId}/token-usage`, {
+                headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {}
+            });
+            if (usageResp.data && usageResp.data.available) {
+                const t = usageResp.data.results?.totals || {};
+                const promptTotal = (t.event_prompt_tokens || 0) + (t.classification_prompt_tokens || 0);
+                const completionTotal = (t.event_completion_tokens || 0) + (t.classification_completion_tokens || 0);
+                const fmt = (n) => (typeof n === 'number' ? n.toLocaleString() : n);
+                details.push({ label: 'Tokens (prompt)', value: fmt(promptTotal) });
+                details.push({ label: 'Tokens (completion)', value: fmt(completionTotal) });
+            }
+        } catch (e) {
+            // Silent if token usage not available yet
+        }
+
         const tbody = document.createElement('tbody');
         details.forEach(item => {
             const tr = document.createElement('tr');
@@ -936,8 +1032,17 @@ async function viewRun(runId) {
         const tableContainer = document.createElement('div');
         tableContainer.className = 'overflow-x-auto';
 
+        // Attempt to load classification mapping
+        let classificationMap = {};
+        try {
+            const clsResp = await axios.get(`${API_URL}/v1/runs/${runId}/classification`);
+            if (clsResp.data && clsResp.data.available) {
+                classificationMap = clsResp.data.results || {};
+            }
+        } catch (_) {}
+
         if (events.length > 0) {
-            const table = createEventsTable(events);
+            const table = createEventsTable(events, classificationMap);
             tableContainer.appendChild(table);
         } else {
             const p = createTextElement('p', 'No events extracted', 'text-gray-500');
@@ -956,7 +1061,7 @@ async function viewRun(runId) {
     }
 }
 
-function createEventsTable(events) {
+function createEventsTable(events, classificationMap = {}) {
     const table = document.createElement('table');
     table.className = 'min-w-full divide-y divide-gray-200';
 
@@ -965,7 +1070,7 @@ function createEventsTable(events) {
     thead.className = 'bg-gray-50';
     const headerRow = document.createElement('tr');
 
-    const headers = ['#', 'Date', 'Event Particulars', 'Citation', 'Document'];
+    const headers = ['#', 'Date', 'Event Particulars', 'Citation', 'Type', 'Document'];
     headers.forEach(header => {
         const th = document.createElement('th');
         th.className = 'px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider';
@@ -994,12 +1099,15 @@ function createEventsTable(events) {
         citationTd.textContent = event.citation || '-';
         citationTd.setAttribute('data-full-text', event.citation || '-');
 
+        const typeLabel = (classificationMap[event.document_reference]?.primary) || '-';
+        const typeTd = createTextElement('td', typeLabel, 'px-6 py-4 whitespace-nowrap text-sm');
         const documentTd = createTextElement('td', event.document_name || '-', 'px-6 py-4 whitespace-nowrap text-sm');
 
         row.appendChild(numberTd);
         row.appendChild(dateTd);
         row.appendChild(particularsTd);
         row.appendChild(citationTd);
+        row.appendChild(typeTd);
         row.appendChild(documentTd);
 
         tbody.appendChild(row);

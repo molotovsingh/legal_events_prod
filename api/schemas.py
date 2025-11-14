@@ -116,6 +116,9 @@ class RunCreate(BaseModel):
     model: Optional[str] = "meta-llama/llama-3.3-70b-instruct"  # Standardized default (v0.11.0+)
     doc_extractor: Optional[str] = "docling"  # Document extractor: 'docling' or 'qwen_vl'
     files: Optional[List[Dict[str, Any]]] = None  # Optional file manifest from frontend upload
+    # Optional document classification (Layer 1.5)
+    enable_classification: Optional[bool] = False
+    classification_model: Optional[str] = None
 
 
 class RunCreateResponse(BaseModel):
@@ -165,6 +168,83 @@ class RunListResponse(BaseModel):
     """Response schema for GET /v1/runs endpoint"""
     runs: List[RunResponse]
     pagination: PaginationMetadata
+
+
+# ============================================================================
+# Classification Schemas
+# ============================================================================
+
+class ClassifierModel(BaseModel):
+    model_id: str
+    display_name: str
+    provider: str
+    recommended: bool = False
+
+
+class ClassifierListResponse(BaseModel):
+    models: List[ClassifierModel]
+    count: int
+    timestamp: datetime
+
+
+# ============================================================================
+# Token Estimation Schemas
+# ============================================================================
+
+class FileRef(BaseModel):
+    filename: str
+    storage_key: str
+    size_bytes: Optional[int] = None
+    mime_type: Optional[str] = None
+
+
+class TokenEstimateRequest(BaseModel):
+    provider: str
+    model: str
+    doc_extractor: Optional[str] = "docling"
+    files: List[FileRef]
+    enable_classification: Optional[bool] = False
+    classification_model: Optional[str] = None
+
+
+class PerDocTokenEstimate(BaseModel):
+    filename: str
+    event_input_tokens: int
+    classification_input_tokens: Optional[int] = None
+
+
+class TokenTotals(BaseModel):
+    event_input_tokens: int
+    classification_input_tokens: int = 0
+    total_input_tokens: int
+    cost_input_usd: Optional[float] = None
+    currency: str = "USD"
+    approx: bool = False
+
+
+class PricingInfo(BaseModel):
+    cost_input_per_1m: Optional[float] = None
+    cost_output_per_1m: Optional[float] = None
+
+
+class TokenEstimateResponse(BaseModel):
+    per_document: List[PerDocTokenEstimate]
+    totals: TokenTotals
+    # Mapping of role -> pricing (e.g., {"event": {...}, "classification": {...}})
+    pricing: Optional[Dict[str, PricingInfo]] = None
+
+
+# ============================================================================
+# Temporary Upload Cleanup Schemas
+# ============================================================================
+
+class TempCleanupRequest(BaseModel):
+    keys: List[str]
+
+
+class TempCleanupResponse(BaseModel):
+    deleted: int
+    skipped: int
 
 
 # ============================================================================

@@ -15,25 +15,6 @@
     <!-- Application JavaScript (external file) -->
     <script src="app.js?v=1763012002" defer></script>
     <style>
-        .fade-in {
-            animation: fadeIn 0.5s;
-        }
-        @keyframes fadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
-        }
-        .spinner {
-            border: 3px solid #f3f3f3;
-            border-top: 3px solid #3498db;
-            border-radius: 50%;
-            width: 40px;
-            height: 40px;
-            animation: spin 1s linear infinite;
-        }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
         /* Text truncation for long content */
         .truncate-cell {
             max-width: 300px;
@@ -65,42 +46,33 @@
         }
     </style>
 </head>
-<body class="bg-gray-50">
+<body class="bg-white">
     <!-- Login Modal -->
-    <div id="loginModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full hidden z-50">
-        <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+    <div id="loginModal" class="fixed inset-0 bg-gray-100 bg-opacity-80 overflow-y-auto h-full w-full hidden z-50">
+        <div class="relative top-16 mx-auto p-3 border w-80 bg-white">
             <div class="mt-3">
-                <h3 class="text-lg font-medium leading-6 text-gray-900 mb-4">Login Required</h3>
+                <h3 class="text-base font-semibold text-gray-900 mb-2">Login</h3>
                 <div class="mt-2">
                     <div class="mb-4">
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Email</label>
+                        <label class="block text-xs font-medium text-gray-700 mb-1">Email</label>
                         <input type="email" id="loginEmail" value="dev@localhost"
-                               class="w-full p-2 border rounded focus:ring-blue-500 focus:border-blue-500"
+                               class="w-full p-2 border"
                                placeholder="dev@localhost">
                     </div>
                     <div class="mb-4">
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Password</label>
+                        <label class="block text-xs font-medium text-gray-700 mb-1">Password</label>
                         <input type="password" id="loginPassword"
-                               class="w-full p-2 border rounded focus:ring-blue-500 focus:border-blue-500"
+                               class="w-full p-2 border"
                                placeholder="devpass123">
                     </div>
                     <div id="loginError" class="text-red-600 text-sm mb-4 hidden"></div>
-                    
-                    <!-- Development credentials help box -->
-                    <div class="bg-blue-50 border border-blue-200 rounded p-3 text-sm text-gray-700 mb-4">
-                        <p class="font-medium text-blue-800 mb-1">Development Credentials:</p>
-                        <p class="font-mono text-xs">Email: dev@localhost</p>
-                        <p class="font-mono text-xs">Password: devpass123</p>
-                        <p class="text-xs text-gray-600 mt-2 italic">Case-sensitive, no spaces</p>
-                    </div>
-                    
-                    <div class="flex justify-end space-x-2">
+                    <div class="flex justify-end space-x-2 mt-2">
                         <button id="cancelLoginBtn"
-                                class="px-4 py-2 bg-gray-300 text-gray-800 rounded hover:bg-gray-400">
+                                class="px-3 py-1 bg-gray-200 text-gray-800 border">
                             Cancel
                         </button>
                         <button id="loginBtn"
-                                class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">
+                                class="px-3 py-1 bg-blue-600 text-white border">
                             Login
                         </button>
                     </div>
@@ -109,18 +81,15 @@
         </div>
     </div>
 
-    <div class="container mx-auto px-4 py-8">
-        <div class="max-w-6xl mx-auto">
+    <div class="container mx-auto px-2 py-2">
+        <div class="max-w-full mx-auto">
             <!-- Header with Auth -->
-            <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+            <div class="bg-white border p-3 mb-3">
                 <div class="flex justify-between items-center">
-                    <h1 class="text-3xl font-bold text-gray-800">Legal Events Extraction v2</h1>
-                    <div class="flex items-center space-x-4">
-                        <div id="apiBadge" class="text-xs"></div>
-                        <div id="statusText" class="text-sm"></div>
-                        <div id="authSection" class="flex items-center">
-                            <!-- Auth buttons will be inserted here dynamically -->
-                        </div>
+                    <h1 class="text-xl font-semibold text-gray-800">Legal Events Extraction v2</h1>
+                    <div class="flex items-center space-x-3">
+                        <div id="statusText" class="text-xs text-gray-600"></div>
+                        <div id="authSection" class="flex items-center"></div>
                     </div>
                 </div>
             </div>
@@ -128,13 +97,13 @@
             <!-- Main Content (disabled when not authenticated) -->
             <div id="mainContent">
                 <!-- Document Parsing Settings -->
-                <div class="bg-white rounded-lg shadow-md p-6 mb-6">
-                    <h2 class="text-xl font-semibold mb-4">Document Parsing Settings</h2>
+                <div class="bg-white border p-3 mb-3">
+                    <h2 class="text-base font-semibold mb-2">Document Parsing Settings</h2>
                     <div class="mb-2">
-                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                        <label class="block text-xs font-medium text-gray-700 mb-1">
                             Document Extractor (OCR/Vision)
                         </label>
-                        <select id="docExtractorSelect" class="w-full p-2 border rounded">
+                        <select id="docExtractorSelect" class="w-full p-2 border">
                             <option value="docling">Docling (Local OCR) - FREE</option>
                             <option value="qwen_vl">Qwen3-VL (Vision API) - $0.077/15 pages (for poor scans)</option>
                         </select>
@@ -143,37 +112,49 @@
                 </div>
 
                 <!-- Event Extraction Settings -->
-                <div class="bg-white rounded-lg shadow-md p-6 mb-6">
-                    <h2 class="text-xl font-semibold mb-4">Event Extraction Settings</h2>
+                <div class="bg-white border p-3 mb-3">
+                    <h2 class="text-base font-semibold mb-2">Event Extraction Settings</h2>
                     <div class="grid grid-cols-2 gap-4">
                         <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-2">
+                            <label class="block text-xs font-medium text-gray-700 mb-1">
                                 Event Extractor Provider
                             </label>
-                            <select id="providerSelect" class="w-full p-2 border rounded">
+                            <select id="providerSelect" class="w-full p-2 border">
                                 <!-- Options will be populated dynamically -->
                             </select>
                         </div>
                         <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-2">
+                            <label class="block text-xs font-medium text-gray-700 mb-1">
                                 Model
                             </label>
-                            <select id="modelSelect" class="w-full p-2 border rounded">
+                            <select id="modelSelect" class="w-full p-2 border">
                                 <option value="">Select a provider first</option>
                             </select>
                         </div>
                     </div>
-                    <p class="text-xs text-gray-500 mt-2">Step 2: Extract legal events from parsed documents using LLM</p>
+                    <div class="grid grid-cols-2 gap-4 mt-2">
+                        <div class="flex items-center space-x-2">
+                            <input id="enableClassification" type="checkbox" class="border">
+                            <label for="enableClassification" class="text-xs text-gray-700">Enable Document Classification</label>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-gray-700 mb-1">Classifier Model</label>
+                            <select id="classifierSelect" class="w-full p-2 border">
+                                <option value="">Llama 3.3 70B (default)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-1">Step 2: Extract legal events and (optional) classify document type</p>
                 </div>
 
                 <!-- Step 3: Create Client -->
-                <div class="bg-white rounded-lg shadow-md p-6 mb-6">
-                    <h2 class="text-xl font-semibold mb-4">Step 3: Create Client</h2>
+                <div class="bg-white border p-3 mb-3">
+                    <h2 class="text-base font-semibold mb-2">Step 3: Create Client</h2>
                     <div class="flex space-x-4">
                         <input type="text" id="clientName" placeholder="Enter client name"
-                               class="flex-1 p-2 border rounded">
+                               class="flex-1 p-2 border">
                         <button id="createClientBtn"
-                                class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
+                                class="bg-blue-600 text-white px-3 py-1 border">
                             Create Client
                         </button>
                     </div>
@@ -181,43 +162,47 @@
                 </div>
 
                 <!-- Step 4: Create Case -->
-                <div class="bg-white rounded-lg shadow-md p-6 mb-6">
-                    <h2 class="text-xl font-semibold mb-4">Step 4: Create Case</h2>
+                <div class="bg-white border p-3 mb-3">
+                    <h2 class="text-base font-semibold mb-2">Step 4: Create Case</h2>
                     <div class="grid grid-cols-2 gap-4">
                         <input type="text" id="clientId" placeholder="Client ID (from step 3)"
-                               class="p-2 border rounded">
+                               class="p-2 border">
                         <input type="text" id="caseName" placeholder="Enter case name"
-                               class="p-2 border rounded">
+                               class="p-2 border">
                     </div>
                     <button id="createCaseBtn"
-                            class="mt-4 bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
+                            class="mt-3 bg-blue-600 text-white px-3 py-1 border">
                         Create Case
                     </button>
                     <div id="caseResult" class="mt-2 text-sm"></div>
                 </div>
 
                 <!-- Step 5: Upload Documents -->
-                <div class="bg-white rounded-lg shadow-md p-6 mb-6">
-                    <h2 class="text-xl font-semibold mb-4">Step 5: Upload Documents & Start Run</h2>
+                <div class="bg-white border p-3 mb-3">
+                    <h2 class="text-base font-semibold mb-2">Step 5: Upload Documents & Start Run</h2>
                     <div class="grid grid-cols-2 gap-4 mb-4">
                         <input type="text" id="caseIdForRun" placeholder="Case ID (from step 4)"
-                               class="p-2 border rounded">
+                               class="p-2 border">
                         <input type="file" id="fileInput" multiple accept=".pdf,.txt,.doc,.docx"
-                               class="p-2 border rounded">
+                               class="p-2 border">
+                    </div>
+                    <div class="flex items-center space-x-2 mb-2">
+                        <button id="estimateCostBtn" class="bg-gray-600 text-white px-3 py-1 border">Estimate Cost</button>
+                        <div id="costPreview" class="text-xs text-gray-700"></div>
                     </div>
                     <button id="startRunBtn"
-                            class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">
+                            class="bg-green-600 text-white px-3 py-1 border">
                         Start Processing Run
                     </button>
                     <div id="uploadResult" class="mt-2 text-sm"></div>
                 </div>
 
                 <!-- Recent Runs -->
-                <div class="bg-white rounded-lg shadow-md p-6 mb-6">
-                    <div class="flex justify-between items-center mb-4">
-                        <h2 class="text-xl font-semibold">Recent Runs</h2>
+                <div class="bg-white border p-3 mb-3">
+                    <div class="flex justify-between items-center mb-2">
+                        <h2 class="text-base font-semibold">Recent Runs</h2>
                         <button id="refreshRunsBtn"
-                                class="bg-gray-500 text-white px-3 py-1 rounded text-sm hover:bg-gray-600">
+                                class="bg-gray-600 text-white px-2 py-1 text-xs border">
                             Refresh
                         </button>
                     </div>
@@ -225,26 +210,26 @@
                 </div>
 
                 <!-- Run Details Panel -->
-                <div id="runDetails" class="bg-white rounded-lg shadow-md p-6 mb-6 hidden">
-                    <h2 class="text-xl font-semibold mb-4">📄 Run Details</h2>
+                <div id="runDetails" class="bg-white border p-3 mb-3 hidden">
+                    <h2 class="text-base font-semibold mb-2">📄 Run Details</h2>
                     <div id="runDetailsContent"></div>
                 </div>
 
                 <!-- Events Display -->
-                <div id="eventsSection" class="bg-white rounded-lg shadow-md p-6 hidden">
-                    <h2 class="text-xl font-semibold mb-4">Extracted Events</h2>
+                <div id="eventsSection" class="bg-white border p-3 hidden">
+                    <h2 class="text-base font-semibold mb-2">Extracted Events</h2>
                     <!-- Export Buttons -->
-                    <div class="mb-4 space-x-2">
+                    <div class="mb-2 space-x-2">
                         <button id="exportCsvBtn"
-                                class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">
+                                class="bg-green-600 text-white px-3 py-1 border">
                             Export CSV
                         </button>
                         <button id="exportXlsxBtn"
-                                class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
+                                class="bg-blue-600 text-white px-3 py-1 border">
                             Export Excel
                         </button>
                         <button id="exportJsonBtn"
-                                class="bg-purple-500 text-white px-4 py-2 rounded hover:bg-purple-600">
+                                class="bg-purple-600 text-white px-3 py-1 border">
                             Export JSON
                         </button>
                     </div>
