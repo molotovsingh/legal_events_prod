@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.2] - 2025-11-14
+
+### Documentation
+- Retired resolved bug reports for v0.11.0 and v0.11.1
+  - Moved BUG_REPORT_20251111T025314Z.md to retired/ (P0 resource leaks resolved)
+  - Moved BUG_REPORT_20251112T025945Z.md to retired/ (frontend issues resolved)
+  - Updated RETIREMENT_LOG.md with detailed resolution tracking
+  - All P0 critical issues now resolved (100% resolution rate)
+- Added FRONTEND_ARCHITECTURE.md
+  - Comprehensive dual interface design documentation (144 lines)
+  - Explains rationale for app.js vs simple.js architecture
+  - Documents feature parity strategy
+- Added bug report BUG_REPORT_20251112T025945Z.md
+  - Documents frontend [object Object] error investigation
+  - Provides root cause analysis for v0.11.0 fixes
+
+### Changed
+- Enhanced .gitignore patterns
+  - Added test artifact exclusions
+  - Added temporary file patterns
+  - Improved repository cleanliness
+
+### Metrics
+- Bug Resolution: 12/17 bugs retired (71% closure rate)
+- Priority Breakdown: 0 P0 critical, 3 P1 major, 2 P2 minor remaining
+- Average Time to Resolution: 1-2 days for critical bugs
+
 ## [0.11.1] - 2025-11-13
 
 ### Added
