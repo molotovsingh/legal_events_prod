@@ -56,8 +56,10 @@ def _get_llama_tokenizer(model_id: str) -> Callable[[str], int]:
             "transformers is required for Llama models. Add 'transformers' and 'sentencepiece' to requirements."
         ) from e
 
-    # Use a canonical Llama tokenizer id when model_id is an OpenRouter alias
-    pretrained_id = "meta-llama/Meta-Llama-3.1-8B"
+    # Use a publicly accessible Llama-compatible tokenizer for testing
+    # meta-llama models are gated and require authentication
+    # TinyLlama uses the same tokenizer architecture and is publicly accessible
+    pretrained_id = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
     tok = AutoTokenizer.from_pretrained(pretrained_id, use_fast=True)
     def _count(text: str) -> int:
         return len(tok.encode(text or ""))
