@@ -39,9 +39,12 @@ requests>=2.32.0
 python-dateutil>=2.9.0
 
 # Tokenizers for accurate token counting (pre-run + post-run)
-tiktoken>=0.7.0
-transformers>=4.45.0
-sentencepiece>=0.1.99
+# v0.12.0: Provider-specific token counting with graceful fallback
+tiktoken>=0.7.0  # REQUIRED for GPT models (OpenAI/OpenRouter) - ~5MB
+# OPTIONAL: Remove transformers+sentencepiece if you only use GPT/Claude models
+# Llama models require transformers (~1.2GB) - raises clear error if missing
+transformers>=4.45.0  # Optional: Llama tokenization (meta-llama/* models)
+sentencepiece>=0.1.99  # Required by transformers for Llama tokenizers
 
 # Document Processing
 PyMuPDF>=1.24.0  # For PDF text extraction (fitz module)

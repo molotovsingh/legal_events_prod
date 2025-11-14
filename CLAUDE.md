@@ -6,6 +6,204 @@
 
 ---
 
+## Token Counting and Cost Estimation (v0.12.0 WIP)
+
+**Status:** Work in Progress - Testing Phase
+**Target Release:** November 28, 2025
+**Current Completeness:** 85% (code complete, tests in progress)
+
+### Overview
+v0.12.0 adds accurate token counting and cost estimation for document processing workflows, enabling users to preview costs before running expensive LLM operations.
+
+### Key Features ✅
+
+**Pre-Run Token Estimation:**
+- `POST /v1/estimate-tokens` - Accurate input token counting before processing
+- Provider/model-specific tokenizers (GPT via tiktoken, Llama via transformers, Claude via anthropic)
+- Real-time cost calculation using model catalog pricing
+- Optional classification cost estimation (Layer 1.5)
+
+**Post-Run Token Tracking:**
+- Per-document token usage breakdown (prompt + completion)
+- Separate event vs classification token buckets
+- Usage metadata in artifacts and run details
+- Fallback counting when provider doesn't return usage
+
+**Classification Layer 1.5:**
+- Optional document classification step before event extraction
+- Configurable classification model (defaults to Llama 3.3 70B)
+- Token tracking for classification inference
+- Enables cost-conscious workflows
+
+### Architecture Components
+
+```
+core/token_counter.py          # NEW - Provider-specific tokenizer resolution
+api/main.py                    # NEW - POST /v1/estimate-tokens endpoint
+api/schemas.py                 # NEW - TokenEstimateRequest/Response schemas
+worker/tasks_refactored.py     # UPDATED - Post-run token tracking integration
+frontend/app.js                # UPDATED - "Estimate Cost" button and UI
+requirements.txt               # UPDATED - tiktoken, transformers, sentencepiece
+```
+
+### Tokenizer Dependencies
+
+**Decision: Transformers is OPTIONAL** (saves 1.2GB Docker image size)
+
+```python
+# tiktoken: REQUIRED (~5MB) - GPT models
+tiktoken>=0.7.0
+
+# transformers: OPTIONAL (~1.2GB) - Llama models only
+# Remove if you only use GPT/Claude models
+transformers>=4.45.0
+sentencepiece>=0.1.99
+```
+
+**Behavior:**
+- GPT models: tiktoken required (fails with clear error if missing)
+- Llama models: transformers required (raises `TokenizerUnavailable` if missing)
+- Claude models: anthropic-tokenizer (removed from requirements, not currently supported)
+- Code gracefully handles missing dependencies with actionable error messages
+
+### API Endpoints
+
+#### POST /v1/estimate-tokens
+Estimates input tokens and cost before processing documents.
+
+**Request:**
+```json
+{
+  "provider": "openrouter",
+  "model": "openai/gpt-4",
+  "doc_extractor": "docling",
+  "files": [
+    {"storage_key": "documents/abc123.pdf", "filename": "contract.pdf"}
+  ],
+  "enable_classification": true,
+  "classification_model": "meta-llama/llama-3.3-70b-instruct"
+}
+```
+
+**Response:**
+```json
+{
+  "per_document": [
+    {
+      "filename": "contract.pdf",
+      "event_input_tokens": 1250,
+      "classification_input_tokens": 450
+    }
+  ],
+  "totals": {
+    "event_input_tokens": 1250,
+    "classification_input_tokens": 450,
+    "total_input_tokens": 1700,
+    "cost_input_usd": 0.051,
+    "currency": "USD",
+    "approx": false
+  },
+  "pricing": {
+    "event": {
+      "cost_input_per_1m": 30.0,
+      "cost_output_per_1m": 60.0
+    },
+    "classification": {
+      "cost_input_per_1m": 0.88,
+      "cost_output_per_1m": 0.88
+    }
+  }
+}
+```
+
+#### GET /v1/classifiers
+Lists available classification models (OpenRouter-based).
+
+**Response:**
+```json
+{
+  "models": [
+    {
+      "model_id": "meta-llama/llama-3.3-70b-instruct",
+      "display_name": "Llama 3.3 70B",
+      "provider": "openrouter",
+      "recommended": true
+    },
+    {
+      "model_id": "anthropic/claude-3-haiku",
+      "display_name": "Claude 3 Haiku",
+      "provider": "openrouter",
+      "recommended": true
+    }
+  ],
+  "count": 2,
+  "timestamp": "2025-11-14T00:00:00Z"
+}
+```
+
+### Adapter Coverage (v0.12.0)
+
+**Post-Run Token Tracking Status:**
+
+| Adapter | Pre-Run | Post-Run | Completion Tokens | Status |
+|---------|---------|----------|-------------------|--------|
+| OpenRouter | ✅ | ✅ | ✅ (from API response) | Full support |
+| Anthropic | ✅ | ⚠️ Fallback | ❌ | Input-only (v0.12.1 planned) |
+| OpenAI | ✅ | ⚠️ Fallback | ❌ | Input-only (v0.12.1 planned) |
+| LangExtract | ✅ | ⚠️ Fallback | ❌ | Input-only (v0.12.1 planned) |
+| DeepSeek | ✅ | ⚠️ Fallback | ❌ | Input-only (v0.12.1 planned) |
+
+**Fallback Behavior:**
+- Counts prompt tokens from extracted document text
+- Sets completion tokens to 0 (not estimated)
+- Underestimates total cost by ~50% (input-only)
+- Decision: Defer full adapter coverage to v0.12.1 (focus testing effort)
+
+### Testing Status
+
+**Test Coverage:** 0% → Target 80%+ before release
+
+**Test Files Created:**
+- `tests/test_token_counter.py` - Unit tests for tokenizer logic (18 test cases)
+- `tests/test_token_estimation.py` - Integration tests for API endpoints
+- `tests/fixtures/README.md` - Documentation for test data requirements
+
+**Test Infrastructure Needed:**
+- [ ] Sample PDF fixtures (1-page, 5-page, complex)
+- [ ] Ground truth token counts for validation
+- [ ] MinIO test keys for integration tests
+- [ ] Performance benchmarks (<5s per document target)
+
+### Known Limitations (v0.12.0)
+
+1. **Docker Image Size:** +1.2GB if transformers included (optional, can be removed)
+2. **Adapter Coverage:** Only OpenRouter tracks completion tokens (others input-only)
+3. **Pricing Freshness:** Model catalog pricing may be stale (no auto-update yet)
+4. **Test Coverage:** Comprehensive test suite in progress (release blocker)
+
+### What Changed in v0.12.0
+
+- ✅ Added `core/token_counter.py` - Provider-specific tokenizer integration
+- ✅ Added `/v1/estimate-tokens` endpoint - Pre-run cost estimation
+- ✅ Added `/v1/classifiers` endpoint - List classification models
+- ✅ Enhanced worker token tracking - Per-document usage breakdown
+- ✅ Added classification Layer 1.5 - Optional pre-processing step
+- ✅ Updated frontend - "Estimate Cost" button and modal
+- ✅ Added tokenizer dependencies - tiktoken (required), transformers (optional)
+- ✅ Created test infrastructure - Stubs and fixtures documentation
+
+### Go/No-Go Criteria (Decision: Nov 22, 2025)
+
+**Release Blockers:**
+- [ ] Test coverage ≥80%
+- [ ] Zero critical (P0) bugs
+- [ ] Performance acceptable (<5s per document)
+- [ ] Documentation complete
+
+**Target:** Ship v0.12.0 on November 28, 2025 (75% probability)
+
+---
+
 ## Simplified Provider Architecture (v0.11.0+)
 
 This system implements a **dramatically simplified** vendor-to-LLM mapping architecture, eliminating ~1000 lines of complex code and multiple registration points.
