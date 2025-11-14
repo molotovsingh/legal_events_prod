@@ -27,64 +27,242 @@ class TestEstimateTokensEndpoint:
         """Endpoint should return 400 if no files provided."""
         payload = {
             "provider": "openrouter",
-            "model": "openai/gpt-4",
+            "model": "meta-llama/llama-3.3-70b-instruct",
             "files": []
         }
         response = client.post("/v1/estimate-tokens", json=payload)
         assert response.status_code == 400
         assert "No files provided" in response.json()["detail"]
 
-    def test_endpoint_requires_valid_provider(self):
-        """Endpoint should validate provider/model combination."""
-        # TODO: Add test once we have MinIO test fixtures
-        pass
+    def test_successful_estimation_single_file(self, uploaded_sample_1page):
+        """Test successful token estimation for a single PDF."""
+        payload = {
+            "provider": "openrouter",
+            "model": "meta-llama/llama-3.3-70b-instruct",
+            "doc_extractor": "docling",
+            "files": [uploaded_sample_1page.model_dump()],
+            "enable_classification": False
+        }
 
-    # TODO: Add comprehensive endpoint tests
-    # These require MinIO test fixtures with uploaded files
+        response = client.post("/v1/estimate-tokens", json=payload)
 
-    # def test_successful_estimation_single_file(self):
-    #     """Test successful token estimation for a single PDF."""
-    #     # 1. Upload test PDF to MinIO
-    #     # 2. Get storage_key from upload response
-    #     # 3. Call /v1/estimate-tokens with storage_key
-    #     # 4. Verify response structure and token counts
-    #     pass
+        # Should succeed
+        assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.text}"
 
-    # def test_successful_estimation_multiple_files(self):
-    #     """Test estimation for multiple files."""
-    #     pass
+        data = response.json()
 
-    # def test_estimation_with_classification_enabled(self):
-    #     """Test estimation includes classification tokens when enabled."""
-    #     pass
+        # Verify response structure
+        assert "per_document" in data
+        assert "totals" in data
+        assert "pricing" in data
 
-    # def test_estimation_with_classification_disabled(self):
-    #     """Test estimation excludes classification tokens when disabled."""
-    #     pass
+        # Verify per-document breakdown
+        assert len(data["per_document"]) == 1
+        doc = data["per_document"][0]
+        assert doc["filename"] == "sample_1page.pdf"
+        assert doc["event_input_tokens"] > 0
+        assert doc["classification_input_tokens"] is None  # Classification disabled
 
-    # def test_cost_calculation_accuracy(self):
-    #     """Test that USD cost calculation matches model catalog pricing."""
-    #     pass
+        # Verify totals
+        totals = data["totals"]
+        assert totals["event_input_tokens"] > 0
+        assert totals["classification_input_tokens"] == 0
+        assert totals["total_input_tokens"] == totals["event_input_tokens"]
 
-    # def test_per_document_breakdown(self):
-    #     """Test that per-document token counts are included."""
-    #     pass
+        # Verify cost calculation
+        assert totals["cost_input_usd"] is not None
+        assert totals["cost_input_usd"] > 0
+        assert totals["currency"] == "USD"
 
-    # def test_pricing_metadata_included(self):
-    #     """Test that pricing information is returned for transparency."""
-    #     pass
+    def test_successful_estimation_multiple_files(self, uploaded_sample_files):
+        """Test estimation for multiple files."""
+        payload = {
+            "provider": "openrouter",
+            "model": "meta-llama/llama-3.3-70b-instruct",
+            "files": [f.model_dump() for f in uploaded_sample_files],
+            "enable_classification": False
+        }
 
-    # def test_missing_storage_key_returns_error(self):
-    #     """Test error handling when storage_key doesn't exist in MinIO."""
-    #     pass
+        response = client.post("/v1/estimate-tokens", json=payload)
+        assert response.status_code == 200
 
-    # def test_tokenizer_unavailable_returns_400(self):
-    #     """Test error when tokenizer is not available for selected model."""
-    #     pass
+        data = response.json()
 
-    # def test_docling_extraction_failure_handled(self):
-    #     """Test error handling when Docling extraction fails."""
-    #     pass
+        # Should have 2 documents
+        assert len(data["per_document"]) == 2
+
+        # Verify each document has token counts
+        for doc in data["per_document"]:
+            assert doc["event_input_tokens"] > 0
+            assert doc["classification_input_tokens"] is None
+
+        # Verify totals are sum of individual documents
+        total_event_tokens = sum(d["event_input_tokens"] for d in data["per_document"])
+        assert data["totals"]["event_input_tokens"] == total_event_tokens
+
+    def test_estimation_with_classification_enabled(self, uploaded_sample_1page):
+        """Test estimation includes classification tokens when enabled."""
+        payload = {
+            "provider": "openrouter",
+            "model": "meta-llama/llama-3.3-70b-instruct",
+            "files": [uploaded_sample_1page.model_dump()],
+            "enable_classification": True,
+            "classification_model": "meta-llama/llama-3.3-70b-instruct"
+        }
+
+        response = client.post("/v1/estimate-tokens", json=payload)
+        assert response.status_code == 200
+
+        data = response.json()
+
+        # Verify classification tokens are included
+        doc = data["per_document"][0]
+        assert doc["classification_input_tokens"] is not None
+        assert doc["classification_input_tokens"] > 0
+
+        # Verify totals include classification
+        totals = data["totals"]
+        assert totals["classification_input_tokens"] > 0
+        assert totals["total_input_tokens"] == (
+            totals["event_input_tokens"] + totals["classification_input_tokens"]
+        )
+
+        # Verify pricing includes both event and classification
+        assert "event" in data["pricing"]
+        assert "classification" in data["pricing"]
+
+    def test_estimation_with_classification_disabled(self, uploaded_sample_1page):
+        """Test estimation excludes classification tokens when disabled."""
+        payload = {
+            "provider": "openrouter",
+            "model": "meta-llama/llama-3.3-70b-instruct",
+            "files": [uploaded_sample_1page.model_dump()],
+            "enable_classification": False
+        }
+
+        response = client.post("/v1/estimate-tokens", json=payload)
+        assert response.status_code == 200
+
+        data = response.json()
+
+        # Classification should be zero
+        assert data["totals"]["classification_input_tokens"] == 0
+        assert data["per_document"][0]["classification_input_tokens"] is None
+
+    def test_cost_calculation_accuracy(self, uploaded_sample_1page):
+        """Test that USD cost calculation matches model catalog pricing."""
+        payload = {
+            "provider": "openrouter",
+            "model": "meta-llama/llama-3.3-70b-instruct",
+            "files": [uploaded_sample_1page.model_dump()]
+        }
+
+        response = client.post("/v1/estimate-tokens", json=payload)
+        assert response.status_code == 200
+
+        data = response.json()
+
+        # Verify cost is calculated correctly
+        tokens = data["totals"]["event_input_tokens"]
+        cost_per_1m = data["pricing"]["event"]["cost_input_per_1m"]
+
+        # Recalculate cost manually
+        expected_cost = (tokens / 1_000_000.0) * cost_per_1m
+
+        # Allow small floating point tolerance
+        actual_cost = data["totals"]["cost_input_usd"]
+        assert abs(actual_cost - expected_cost) < 0.000001
+
+    def test_per_document_breakdown(self, uploaded_sample_files):
+        """Test that per-document token counts are included."""
+        payload = {
+            "provider": "openrouter",
+            "model": "meta-llama/llama-3.3-70b-instruct",
+            "files": [f.model_dump() for f in uploaded_sample_files]
+        }
+
+        response = client.post("/v1/estimate-tokens", json=payload)
+        assert response.status_code == 200
+
+        data = response.json()
+
+        # Each document should have its own breakdown
+        assert len(data["per_document"]) == len(uploaded_sample_files)
+
+        for i, doc in enumerate(data["per_document"]):
+            assert doc["filename"] == uploaded_sample_files[i].filename
+            assert doc["event_input_tokens"] > 0
+
+    def test_pricing_metadata_included(self, uploaded_sample_1page):
+        """Test that pricing information is returned for transparency."""
+        payload = {
+            "provider": "openrouter",
+            "model": "meta-llama/llama-3.3-70b-instruct",
+            "files": [uploaded_sample_1page.model_dump()],
+            "enable_classification": True,
+            "classification_model": "meta-llama/llama-3.3-70b-instruct"
+        }
+
+        response = client.post("/v1/estimate-tokens", json=payload)
+        assert response.status_code == 200
+
+        data = response.json()
+
+        # Verify pricing metadata structure
+        assert "pricing" in data
+        assert "event" in data["pricing"]
+        assert "classification" in data["pricing"]
+
+        # Verify event pricing
+        event_pricing = data["pricing"]["event"]
+        assert "cost_input_per_1m" in event_pricing
+        assert event_pricing["cost_input_per_1m"] is not None
+
+        # Verify classification pricing
+        cls_pricing = data["pricing"]["classification"]
+        assert "cost_input_per_1m" in cls_pricing
+        assert cls_pricing["cost_input_per_1m"] is not None
+
+    def test_missing_storage_key_returns_error(self, invalid_storage_key):
+        """Test error handling when storage_key doesn't exist in MinIO."""
+        from api.schemas import FileRef
+
+        payload = {
+            "provider": "openrouter",
+            "model": "meta-llama/llama-3.3-70b-instruct",
+            "files": [
+                FileRef(
+                    filename="nonexistent.pdf",
+                    storage_key=invalid_storage_key,
+                    size_bytes=1000
+                ).model_dump()
+            ]
+        }
+
+        # Should raise an error (either HTTP error or exception)
+        try:
+            response = client.post("/v1/estimate-tokens", json=payload)
+            # If we get a response, it should be an error status
+            assert response.status_code >= 400, f"Expected error status, got {response.status_code}"
+        except Exception as e:
+            # Exception is also acceptable for missing storage key
+            assert "storage" in str(e).lower() or "download" in str(e).lower() or "failed" in str(e).lower()
+
+    def test_unsupported_provider_model_combination(self, uploaded_sample_1page):
+        """Test error when provider/model combination is unsupported."""
+        payload = {
+            "provider": "unsupported_provider",
+            "model": "unsupported/model",
+            "files": [uploaded_sample_1page.model_dump()]
+        }
+
+        # Should raise ValueError or return 400/500
+        try:
+            response = client.post("/v1/estimate-tokens", json=payload)
+            assert response.status_code >= 400, f"Expected error status, got {response.status_code}"
+        except ValueError as e:
+            # ValueError for unsupported provider is acceptable
+            assert "unsupported_provider" in str(e).lower() or "unknown provider" in str(e).lower()
 
 
 class TestClassifiersEndpoint:

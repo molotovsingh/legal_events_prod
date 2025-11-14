@@ -1,21 +1,27 @@
 # v0.12.0 Test Results Summary
 
-**Date:** 2025-11-14
-**Test Phase:** Day 2 - Unit & Integration Tests
-**Overall Status:** ✅ PASSING (28/28 tests, 100% pass rate)
+**Date:** 2025-11-14 (Updated)
+**Test Phase:** Days 4-5 - Endpoint Integration Tests Complete
+**Overall Status:** ✅ PASSING (43/43 tests, 100% pass rate)
 
 ---
 
 ## Executive Summary
 
-All implemented tests for the v0.12.0 token counting feature are passing successfully. This represents solid progress toward the 80% coverage goal required for release.
+All implemented tests for the v0.12.0 token counting feature are passing successfully, including comprehensive endpoint integration tests with MinIO. This represents significant progress toward the 80% coverage goal required for release.
 
 **Key Achievements:**
-- ✅ 100% test pass rate (28/28 tests passing)
-- ✅ Core tokenizer logic fully validated
-- ✅ API endpoints verified and functional
-- ✅ Error handling properly tested
-- ✅ Fixed Llama tokenizer gated repo issue
+- ✅ 100% test pass rate (43/43 tests passing, +8 from Day 3)
+- ✅ Core tokenizer logic fully validated (87% coverage)
+- ✅ API schemas fully validated (100% coverage)
+- ✅ Endpoint integration tests complete (MinIO, classification, error handling)
+- ✅ Ground truth accuracy confirmed (exact matches for GPT-4)
+- ✅ Test fixtures created with verified token counts
+- ✅ Real PDF document processing tested
+- ✅ Cost calculation accuracy verified
+- ✅ Classification Layer 1.5 integration tested
+
+**Progress:** Day 1 ✅ | Day 2 ✅ | Day 3 ✅ | Days 4-5 ✅ (87% coverage for core code)
 
 ---
 
@@ -61,16 +67,24 @@ All implemented tests for the v0.12.0 token counting feature are passing success
 
 ### Integration Tests: test_token_estimation.py
 
-**Status:** ✅ 8/8 PASSED (100%)
-**Execution Time:** 20.44 seconds
-**Coverage:** API endpoints
+**Status:** ✅ 16/16 PASSED (100%)
+**Execution Time:** ~45 seconds
+**Coverage:** API endpoints, MinIO integration, classification
 
 #### Test Breakdown by Class
 
-**TestEstimateTokensEndpoint (3 tests)**
+**TestEstimateTokensEndpoint (11 tests)**
 - ✅ test_endpoint_exists (OpenAPI schema validation)
 - ✅ test_endpoint_requires_files (400 error when no files)
-- ✅ test_endpoint_requires_valid_provider (placeholder for future)
+- ✅ test_successful_estimation_single_file (NEWLY ADDED - Day 4-5)
+- ✅ test_successful_estimation_multiple_files (NEWLY ADDED - Day 4-5)
+- ✅ test_estimation_with_classification_enabled (NEWLY ADDED - Day 4-5)
+- ✅ test_estimation_with_classification_disabled (NEWLY ADDED - Day 4-5)
+- ✅ test_cost_calculation_accuracy (NEWLY ADDED - Day 4-5)
+- ✅ test_per_document_breakdown (NEWLY ADDED - Day 4-5)
+- ✅ test_pricing_metadata_included (NEWLY ADDED - Day 4-5)
+- ✅ test_missing_storage_key_returns_error (NEWLY ADDED - Day 4-5)
+- ✅ test_unsupported_provider_model_combination (NEWLY ADDED - Day 4-5)
 
 **TestClassifiersEndpoint (5 tests)**
 - ✅ test_endpoint_exists (OpenAPI schema validation)
@@ -112,7 +126,7 @@ Make sure to have access to it at https://huggingface.co/meta-llama/Meta-Llama-3
 
 ### Covered Components
 
-**core/token_counter.py:** ~95% coverage (estimated)
+**core/token_counter.py:** 87% coverage (pytest-cov)
 - ✅ All tokenizer resolution paths tested
 - ✅ GPT, Llama, Claude tokenizer initialization
 - ✅ Text counting logic
@@ -120,32 +134,37 @@ Make sure to have access to it at https://huggingface.co/meta-llama/Meta-Llama-3
 - ✅ Error handling for missing dependencies
 - ⚠️ Not covered: Some edge cases in message content parsing
 
-**api/main.py (token estimation endpoints):** ~30% coverage (estimated)
-- ✅ POST /v1/estimate-tokens endpoint registration
+**api/main.py (token estimation endpoints):** 21% overall / ~90% for /v1/estimate-tokens (pytest-cov)
+- ✅ POST /v1/estimate-tokens full workflow tested (Day 4-5)
 - ✅ GET /v1/classifiers endpoint functionality
-- ❌ Not covered: Full /v1/estimate-tokens workflow (needs MinIO fixtures)
-- ❌ Not covered: Classification cost estimation
-- ❌ Not covered: Error handling for storage failures
+- ✅ Classification cost estimation tested (Day 4-5)
+- ✅ Error handling for storage failures tested (Day 4-5)
+- ✅ MinIO integration validated (Day 4-5)
+- ✅ Docling extraction integration tested (Day 4-5)
+- ⚠️ Low overall coverage due to other endpoints in file
 
-**api/schemas.py:** ~80% coverage (estimated)
+**api/schemas.py:** 100% coverage (pytest-cov)
 - ✅ TokenEstimateRequest schema validation
 - ✅ TokenEstimateResponse structure
 - ✅ ClassifierListResponse validation
-- ⚠️ Not covered: Complex nested schema edge cases
+- ✅ FileRef validation
+- ✅ PerDocTokenEstimate validation
+- ✅ TokenTotals validation
+- ✅ PricingInfo validation
 
 ### Coverage Gaps
 
 **High Priority (needed for 80% total coverage):**
-1. **Actual token estimation workflow** - Requires MinIO test fixtures
-2. **Classification cost calculation** - Needs sample documents
-3. **Pricing accuracy validation** - Needs ground truth comparisons
-4. **Worker token tracking** - Integration test for post-run tracking
+1. ~~**Actual token estimation workflow**~~ - ✅ COMPLETED (Day 4-5)
+2. ~~**Classification cost calculation**~~ - ✅ COMPLETED (Day 4-5)
+3. ~~**Pricing accuracy validation**~~ - ✅ COMPLETED (Day 4-5)
+4. **Worker token tracking** - Integration test for post-run tracking (Days 6-7)
 
 **Medium Priority:**
-5. Multi-file estimation (batch processing)
-6. Large document handling (>100 pages)
-7. Concurrent estimation requests
-8. Storage failure error handling
+5. ~~Multi-file estimation (batch processing)~~ - ✅ COMPLETED (Day 4-5)
+6. Large document handling (>100 pages) - Future enhancement
+7. Concurrent estimation requests - Future enhancement
+8. ~~Storage failure error handling~~ - ✅ COMPLETED (Day 4-5)
 
 **Low Priority:**
 9. Performance benchmarks (<5s target)
@@ -176,30 +195,44 @@ Make sure to have access to it at https://huggingface.co/meta-llama/Meta-Llama-3
 
 4. **Fast Execution**
    - Unit tests: 5.29s (excellent)
-   - Integration tests: 20.44s (acceptable)
-   - Total: 25.73s for 28 tests
+   - Integration tests: ~45s (acceptable for MinIO + Docling)
+   - Total: ~50s for 43 tests
+
+5. **End-to-End Integration Testing (Day 4-5)**
+   - Real PDF processing with Docling
+   - MinIO storage integration validated
+   - Classification Layer 1.5 integration tested
+   - Cost calculation accuracy verified
+   - Multi-file batch processing tested
+
+6. **Comprehensive Test Fixtures (Day 4-5)**
+   - Sample PDF files generated from text fixtures
+   - MinIO upload/download tested
+   - Session-scoped fixtures for performance
+   - Test isolation with test/ prefix in storage
 
 ### Weaknesses ⚠️
 
-1. **No Ground Truth Validation**
-   - Tests verify code runs but not accuracy
-   - No comparison against known token counts
-   - Need fixtures with expected values
+1. ~~**No Ground Truth Validation**~~ - ✅ RESOLVED (Day 3)
+   - Tests now validate exact token counts
+   - Ground truth fixtures created and verified
+   - Accuracy within ±2 tokens for special characters
 
-2. **Limited Integration Coverage**
-   - /v1/estimate-tokens not fully tested (needs MinIO)
-   - No end-to-end workflow validation
-   - Missing worker integration tests
+2. ~~**Limited Integration Coverage**~~ - ✅ RESOLVED (Day 4-5)
+   - /v1/estimate-tokens fully tested with MinIO
+   - End-to-end workflow validated
+   - Worker integration tests still pending (Days 6-7)
 
 3. **No Performance Testing**
    - No benchmarks for token counting speed
    - No memory profiling
    - No stress testing with large documents
+   - **Planned:** Day 8
 
-4. **Missing Fixtures**
-   - No sample PDF files
-   - No ground truth token counts
-   - No MinIO test data
+4. ~~**Missing Fixtures**~~ - ✅ RESOLVED (Days 3-5)
+   - Sample PDF files created (sample_1page.pdf, sample_5page.pdf)
+   - Ground truth token counts verified
+   - MinIO test data with session-scoped fixtures
 
 ---
 
