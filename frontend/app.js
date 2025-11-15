@@ -319,6 +319,7 @@ async function estimateCost() {
         return;
     }
 
+    let uploaded = [];
     try {
         // Upload to temp via /v1/upload (does not create a run)
         const formData = new FormData();
@@ -326,7 +327,7 @@ async function estimateCost() {
         const uploadResp = await axios.post(`${API_URL}/v1/upload`, formData, {
             headers: { 'Content-Type': 'multipart/form-data', ...(authToken ? { 'Authorization': `Bearer ${authToken}` } : {}) }
         });
-        const uploaded = uploadResp.data.files || [];
+        uploaded = uploadResp.data.files || [];
         if (uploaded.length === 0) {
             previewEl.textContent = 'Upload failed';
             return;
@@ -353,10 +354,7 @@ async function estimateCost() {
     } finally {
         // Cleanup temporary uploads to avoid storage leaks
         try {
-            if (authToken && typeof lastUploadedTempFiles !== 'undefined') {
-                // no-op legacy fallback
-            }
-            if (typeof uploaded !== 'undefined' && uploaded.length > 0) {
+            if (uploaded && uploaded.length > 0) {
                 const keys = uploaded.map(u => u.storage_path).filter(Boolean);
                 if (keys.length > 0) {
                     await axios.post(`${API_URL}/v1/uploads/cleanup`, { keys }, {

@@ -217,7 +217,7 @@ def process_run(run_id: int, provider: str = "openrouter", model: str = None) ->
                         text_for_cls = extracted_text
                         cls_result = classifier.classify(text_for_cls, document_title=doc.filename)
                         # Persist in memory; uploaded as artifact at end of run
-                        classification_results[doc.filename] = {
+                        classification_results[str(doc.id)] = {
                             'primary': cls_result.get('primary'),
                             'confidence': cls_result.get('confidence'),
                             'model': cls_result.get('model'),
@@ -268,8 +268,8 @@ def process_run(run_id: int, provider: str = "openrouter", model: str = None) ->
                         ev_completion = int(ev_usage.get("completion_tokens") or 0)
                         total_event_prompt += ev_prompt
                         total_event_completion += ev_completion
-                        token_usage[doc.filename] = token_usage.get(doc.filename, {})
-                        token_usage[doc.filename]["event"] = {
+                        token_usage[str(doc.id)] = token_usage.get(str(doc.id), {})
+                        token_usage[str(doc.id)]["event"] = {
                             "prompt_tokens": ev_prompt,
                             "completion_tokens": ev_completion
                         }
@@ -278,8 +278,8 @@ def process_run(run_id: int, provider: str = "openrouter", model: str = None) ->
                         try:
                             ev_prompt = count_text(extracted_text, provider, model)
                             total_event_prompt += ev_prompt
-                            token_usage[doc.filename] = token_usage.get(doc.filename, {})
-                            token_usage[doc.filename]["event"] = {
+                            token_usage[str(doc.id)] = token_usage.get(str(doc.id), {})
+                            token_usage[str(doc.id)]["event"] = {
                                 "prompt_tokens": ev_prompt,
                                 "completion_tokens": 0
                             }

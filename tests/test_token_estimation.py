@@ -5,7 +5,14 @@ Tests pre-run token estimation and cost calculation functionality.
 v0.12.0 - Token counting and cost estimation feature
 """
 
+import os
 import pytest
+
+# Ensure required env vars are set before importing the app to avoid lifespan errors
+os.environ.setdefault("JWT_SECRET_KEY", "test_secret_key_for_tests")
+os.environ.setdefault("DATABASE_URL", "sqlite:///./test_integration.db")
+os.environ.setdefault("REDIS_URL", "redis://localhost:6379/15")
+
 from fastapi.testclient import TestClient
 from api.main import app
 
