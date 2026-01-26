@@ -1,6 +1,22 @@
 # Core Dependencies for Legal Events v2
 # Python 3.12+
 
+# ============================================================================
+# CORE ENGINE (Private Package)
+# ============================================================================
+# The extraction engine is separated into a private package: legal-events-core
+#
+# For development (local installation):
+#   pip install -e ~/legal-events-core
+#
+# For production (from private git repo):
+#   pip install git+ssh://git@github.com/your-org/legal-events-core.git
+#
+# Uncomment one of these when the package is hosted:
+# legal-events-core @ git+ssh://git@github.com/your-org/legal-events-core.git
+# legal-events-core @ git+ssh://git@github.com/your-org/legal-events-core.git@v0.1.0
+# ============================================================================
+
 # FastAPI and Web
 fastapi>=0.115.0
 uvicorn[standard]>=0.32.0

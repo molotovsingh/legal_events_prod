@@ -44,16 +44,21 @@ alembic revision --autogenerate -m "description"  # Create migration
 - **Worker Service** (`worker/`): Owns events, artifacts (write-only). Background processing via RQ.
 - **Communication**: Redis queues + PostgreSQL only. No cross-imports between API and Worker.
 
+### Core Engine (Private Package)
+The extraction pipeline has been separated into a private package: `legal-events-core`
+located at `~/legal-events-core/`. This protects proprietary extraction logic from
+outsourced developers who only need access to the application layer.
+
+```bash
+# Install core engine for development
+pip install -e ~/legal-events-core
+
+# For production (from private git repo)
+pip install git+ssh://git@github.com/your-org/legal-events-core.git
+```
+
 ### Key Directories
 ```
-core/               # Extraction pipeline and LLM adapters
-├── providers.py    # Unified provider registry (single source of truth)
-├── config.py       # Provider config classes (all use `model` field)
-├── *_adapter.py    # LLM provider adapters (openrouter, anthropic, openai, etc.)
-├── legal_pipeline_refactored.py  # Main extraction pipeline
-├── token_counter.py # Token counting for cost estimation
-└── docling_adapter.py  # PDF text extraction
-
 api/                # FastAPI application
 ├── main.py         # REST endpoints
 ├── schemas.py      # Pydantic models

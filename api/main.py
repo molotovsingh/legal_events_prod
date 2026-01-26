@@ -25,9 +25,8 @@ from .schemas import *
 from infra.storage import MinioStorage
 from infra.storage_keys import generate_document_key, generate_artifact_key
 from infra.queue import enqueue_job, enqueue_process_run
-from core.token_counter import count_text, TokenizerUnavailable
-from core.constants import FIVE_COLUMN_HEADERS
-from core.event_extractor_catalog import get_event_extractor_catalog
+from legal_events_core import count_text, TokenizerUnavailable, FIVE_COLUMN_HEADERS
+from legal_events_core.prompts.event_extractor_catalog import get_event_extractor_catalog
 # ✅ Authentication enabled - requires valid JWT Bearer token
 from .auth import get_current_user, require_auth
 
@@ -108,7 +107,7 @@ async def lifespan(app: FastAPI):
     # Validate provider configuration (v0.11.0+)
     logger.info("🏭 Validating provider configuration...")
     try:
-        from core.providers import validate_providers_on_startup
+        from legal_events_core.providers import validate_providers_on_startup
         is_valid, errors = validate_providers_on_startup()
         if not is_valid:
             error_msg = f"CRITICAL: Provider validation failed:\n" + "\n".join(f"  - {e}" for e in errors)
@@ -131,7 +130,7 @@ async def lifespan(app: FastAPI):
         from sqlalchemy.orm import sessionmaker
         from infra.database import engine
         from infra.models import ModelCatalog as ModelCatalogTable
-        from core.model_catalog import _MODEL_REGISTRY
+        from legal_events_core.prompts.model_catalog import _MODEL_REGISTRY
 
         Session = sessionmaker(bind=engine)
         session = Session()
@@ -355,7 +354,7 @@ async def list_providers(
     """
     try:
         # Use new unified provider registry (v0.11.0+)
-        from core.providers import PROVIDERS, list_providers as get_providers_list
+        from legal_events_core import PROVIDERS, list_providers as get_providers_list
 
         # Get providers based on enabled filter
         provider_list = get_providers_list(enabled_only=enabled)
@@ -402,7 +401,7 @@ async def list_classifiers():
     Returns only enabled models from the classification catalog filtered to provider 'openrouter'.
     """
     try:
-        from core.classification_catalog import list_classification_models
+        from legal_events_core.prompts.classification_catalog import list_classification_models
 
         models = list_classification_models(enabled=True, provider="openrouter")
         payload = [
@@ -435,8 +434,8 @@ async def estimate_tokens(payload: TokenEstimateRequest):
     - Optionally counts classification input tokens on an excerpt
     - Converts tokens→$ using static pricing from model_catalog
     """
-    from core.extractor_factory import create_default_extractors
-    from core.model_catalog import get_model_catalog
+    from legal_events_core import create_default_extractors
+    from legal_events_core.prompts.model_catalog import get_model_catalog
     import tempfile, os
     from pathlib import Path as _P
 
@@ -1640,7 +1639,7 @@ async def retry_run(
         JSON with retry status and number of documents reset
     """
     from datetime import timedelta
-    from core.config import RetryConfig
+    from legal_events_core import RetryConfig
     import redis
     
     # Load retry configuration

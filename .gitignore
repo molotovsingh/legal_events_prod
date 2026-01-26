@@ -105,3 +105,15 @@ test_login.html
 build-frontend.sh
 old_app.js
 frontend/config.js
+
+# ============================================================================
+# CORE ENGINE PROTECTION
+# ============================================================================
+# The /core/ directory has been extracted into a separate private package
+# (legal-events-core). This prevents outsourced devs from accessing the
+# proprietary extraction engine code.
+#
+# Do NOT re-add core/ to this repository.
+# Install the package via: pip install -e ~/legal-events-core
+# ============================================================================
+# /core/  # Uncomment this line after removing /core/ directory

@@ -21,12 +21,13 @@ import json
 import redis
 from sqlalchemy.orm import Session
 
-# Import existing pipeline
-import sys
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
-from core.legal_pipeline_refactored import LegalEventsPipeline
-from core.token_counter import count_text, TokenizerUnavailable
-from core.constants import FIVE_COLUMN_HEADERS
+# Import from legal_events_core package (private extraction engine)
+from legal_events_core import (
+    LegalEventsPipeline,
+    count_text,
+    TokenizerUnavailable,
+    FIVE_COLUMN_HEADERS,
+)
 
 # Import worker-owned dependencies
 from worker.database import SessionLocal
@@ -91,7 +92,7 @@ def process_run(run_id: int, provider: str = "openrouter", model: str = None) ->
         # READ documents to process (read-only) - includes failed docs for retry
         # Query PENDING and FAILED documents (allows automatic retry)
         # Load retry configuration for stuck document threshold
-        from core.config import RetryConfig
+        from legal_events_core import RetryConfig
         retry_config = RetryConfig()
         stuck_threshold_hours = retry_config.stuck_document_hours
         
@@ -141,8 +142,8 @@ def process_run(run_id: int, provider: str = "openrouter", model: str = None) ->
             if classification_enabled:
                 # Default to recommended Llama 70B if not specified
                 classification_model = classification_model or 'meta-llama/llama-3.3-70b-instruct'
-                from core.classification_factory import create_classifier
-                from core.prompt_registry import get_default_variant
+                from legal_events_core.prompts.classification_factory import create_classifier
+                from legal_events_core.prompts.prompt_registry import get_default_variant
                 classifier = create_classifier(
                     model_id=classification_model,
                     prompt_variant=get_default_variant()
@@ -236,7 +237,7 @@ def process_run(run_id: int, provider: str = "openrouter", model: str = None) ->
                 # Convert DataFrame to event records
                 # CRITICAL: Rename display headers back to internal field names
                 if not df.empty:
-                    from core.constants import FIVE_COLUMN_HEADERS, INTERNAL_FIELDS
+                    from legal_events_core import FIVE_COLUMN_HEADERS, INTERNAL_FIELDS
 
                     # Create column mapping from display to internal names
                     column_mapping = {
@@ -359,7 +360,7 @@ def process_run(run_id: int, provider: str = "openrouter", model: str = None) ->
         # Calculate final stats
         # Compute cost from model catalog pricing
         try:
-            from core.model_catalog import get_model_catalog
+            from legal_events_core.prompts.model_catalog import get_model_catalog
             catalog = get_model_catalog()
             pricing_ev = catalog.get_pricing(model)
             ev_in = float(pricing_ev["cost_input_per_1m"]) if pricing_ev else 0.0
@@ -371,7 +372,7 @@ def process_run(run_id: int, provider: str = "openrouter", model: str = None) ->
         cls_out = 0.0
         if classification_enabled and classification_model:
             try:
-                from core.model_catalog import get_model_catalog
+                from legal_events_core.prompts.model_catalog import get_model_catalog
                 catalog = get_model_catalog()
                 pricing_cls = catalog.get_pricing(classification_model)
                 cls_in = float(pricing_cls["cost_input_per_1m"]) if pricing_cls else 0.0
@@ -569,7 +570,7 @@ def process_document(document_id: int, provider: str = "openrouter", model: str 
         # Convert DataFrame to event records
         # CRITICAL: Rename display headers back to internal field names
         if not df.empty:
-            from core.constants import FIVE_COLUMN_HEADERS, INTERNAL_FIELDS
+            from legal_events_core import FIVE_COLUMN_HEADERS, INTERNAL_FIELDS
 
             # Create column mapping from display to internal names
             column_mapping = {
