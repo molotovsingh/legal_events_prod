@@ -136,6 +136,20 @@ def _build_default_modes() -> Dict[str, ProcessingMode]:
             estimated_speed="~5s per page",
             is_developer_mode=True
         ),
+
+        # === BACKWARD COMPATIBILITY ===
+        # "fast" was renamed to "medium" - keep alias for existing API integrations
+        "fast": ProcessingMode(
+            id="fast",
+            name="Budget",
+            description="Alias for 'medium' mode. Use 'medium' instead.",
+            provider=os.getenv("MODE_MEDIUM_PROVIDER", "openrouter"),
+            model=MODE_MEDIUM_MODEL,
+            doc_extractor=os.getenv("MODE_MEDIUM_DOC_EXTRACTOR", "docling"),
+            icon="dollar",
+            estimated_speed="~3s per page",
+            is_developer_mode=True  # Hide from UI, but still works via API
+        ),
     }
 
 
