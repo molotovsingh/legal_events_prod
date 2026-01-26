@@ -1,516 +1,146 @@
-- this is a child of the POC (proof of concept) located in the docling_langextract_testing directory (v0.10.1)
-  - Set POC_DIR environment variable to reference the parent POC: `export POC_DIR=~/docling_langextract_testing`
-  - Or configure the path in your development environment
-- always ask in case of any gaps or clarity, avoid assuming things that can be easily cleared from user or from researching the internet. Refer to the parent POC as well
-- **CRITICAL:** For ANY external library/tool/service issues: WebSearch FIRST for latest documentation/API before attempting fixes. Do not trial-and-error with external deps.
+# CLAUDE.md
 
----
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Token Counting and Cost Estimation (v0.12.0 WIP)
+## Project Overview
 
-**Status:** Work in Progress - Testing Phase
-**Target Release:** November 28, 2025
-**Current Completeness:** 85% (code complete, tests in progress)
+Legal Events Extraction - a production system for extracting legal events from documents (PDFs, emails) using LLM providers. Forked from the POC at `~/docling_langextract_testing` (v0.10.1).
 
-### Overview
-v0.12.0 adds accurate token counting and cost estimation for document processing workflows, enabling users to preview costs before running expensive LLM operations.
+## Common Commands
 
-### Key Features ✅
-
-**Pre-Run Token Estimation:**
-- `POST /v1/estimate-tokens` - Accurate input token counting before processing
-- Provider/model-specific tokenizers (GPT via tiktoken, Llama via transformers, Claude via anthropic)
-- Real-time cost calculation using model catalog pricing
-- Optional classification cost estimation (Layer 1.5)
-
-**Post-Run Token Tracking:**
-- Per-document token usage breakdown (prompt + completion)
-- Separate event vs classification token buckets
-- Usage metadata in artifacts and run details
-- Fallback counting when provider doesn't return usage
-
-**Classification Layer 1.5:**
-- Optional document classification step before event extraction
-- Configurable classification model (defaults to Llama 3.3 70B)
-- Token tracking for classification inference
-- Enables cost-conscious workflows
-
-### Architecture Components
-
-```
-core/token_counter.py          # NEW - Provider-specific tokenizer resolution
-api/main.py                    # NEW - POST /v1/estimate-tokens endpoint
-api/schemas.py                 # NEW - TokenEstimateRequest/Response schemas
-worker/tasks_refactored.py     # UPDATED - Post-run token tracking integration
-frontend/app.js                # UPDATED - "Estimate Cost" button and UI
-requirements.txt               # UPDATED - tiktoken, transformers, sentencepiece
-```
-
-### Tokenizer Dependencies
-
-**Decision: Transformers is OPTIONAL** (saves 1.2GB Docker image size)
-
-```python
-# tiktoken: REQUIRED (~5MB) - GPT models
-tiktoken>=0.7.0
-
-# transformers: OPTIONAL (~1.2GB) - Llama models only
-# Remove if you only use GPT/Claude models
-transformers>=4.45.0
-sentencepiece>=0.1.99
-```
-
-**Behavior:**
-- GPT models: tiktoken required (fails with clear error if missing)
-- Llama models: transformers required (raises `TokenizerUnavailable` if missing)
-- Claude models: anthropic-tokenizer (removed from requirements, not currently supported)
-- Code gracefully handles missing dependencies with actionable error messages
-
-### API Endpoints
-
-#### POST /v1/estimate-tokens
-Estimates input tokens and cost before processing documents.
-
-**Request:**
-```json
-{
-  "provider": "openrouter",
-  "model": "openai/gpt-4",
-  "doc_extractor": "docling",
-  "files": [
-    {"storage_key": "documents/abc123.pdf", "filename": "contract.pdf"}
-  ],
-  "enable_classification": true,
-  "classification_model": "meta-llama/llama-3.3-70b-instruct"
-}
-```
-
-**Response:**
-```json
-{
-  "per_document": [
-    {
-      "filename": "contract.pdf",
-      "event_input_tokens": 1250,
-      "classification_input_tokens": 450
-    }
-  ],
-  "totals": {
-    "event_input_tokens": 1250,
-    "classification_input_tokens": 450,
-    "total_input_tokens": 1700,
-    "cost_input_usd": 0.051,
-    "currency": "USD",
-    "approx": false
-  },
-  "pricing": {
-    "event": {
-      "cost_input_per_1m": 30.0,
-      "cost_output_per_1m": 60.0
-    },
-    "classification": {
-      "cost_input_per_1m": 0.88,
-      "cost_output_per_1m": 0.88
-    }
-  }
-}
-```
-
-#### GET /v1/classifiers
-Lists available classification models (OpenRouter-based).
-
-**Response:**
-```json
-{
-  "models": [
-    {
-      "model_id": "meta-llama/llama-3.3-70b-instruct",
-      "display_name": "Llama 3.3 70B",
-      "provider": "openrouter",
-      "recommended": true
-    },
-    {
-      "model_id": "anthropic/claude-3-haiku",
-      "display_name": "Claude 3 Haiku",
-      "provider": "openrouter",
-      "recommended": true
-    }
-  ],
-  "count": 2,
-  "timestamp": "2025-11-14T00:00:00Z"
-}
-```
-
-### Adapter Coverage (v0.12.0)
-
-**Post-Run Token Tracking Status:**
-
-| Adapter | Pre-Run | Post-Run | Completion Tokens | Status |
-|---------|---------|----------|-------------------|--------|
-| OpenRouter | ✅ | ✅ | ✅ (from API response) | Full support |
-| Anthropic | ✅ | ⚠️ Fallback | ❌ | Input-only (v0.12.1 planned) |
-| OpenAI | ✅ | ⚠️ Fallback | ❌ | Input-only (v0.12.1 planned) |
-| LangExtract | ✅ | ⚠️ Fallback | ❌ | Input-only (v0.12.1 planned) |
-| DeepSeek | ✅ | ⚠️ Fallback | ❌ | Input-only (v0.12.1 planned) |
-
-**Fallback Behavior:**
-- Counts prompt tokens from extracted document text
-- Sets completion tokens to 0 (not estimated)
-- Underestimates total cost by ~50% (input-only)
-- Decision: Defer full adapter coverage to v0.12.1 (focus testing effort)
-
-### Testing Status
-
-**Test Coverage:** 0% → Target 80%+ before release
-
-**Test Files Created:**
-- `tests/test_token_counter.py` - Unit tests for tokenizer logic (18 test cases)
-- `tests/test_token_estimation.py` - Integration tests for API endpoints
-- `tests/fixtures/README.md` - Documentation for test data requirements
-
-**Test Infrastructure Needed:**
-- [ ] Sample PDF fixtures (1-page, 5-page, complex)
-- [ ] Ground truth token counts for validation
-- [ ] MinIO test keys for integration tests
-- [ ] Performance benchmarks (<5s per document target)
-
-### Known Limitations (v0.12.0)
-
-1. **Docker Image Size:** +1.2GB if transformers included (optional, can be removed)
-2. **Adapter Coverage:** Only OpenRouter tracks completion tokens (others input-only)
-3. **Pricing Freshness:** Model catalog pricing may be stale (no auto-update yet)
-4. **Test Coverage:** Comprehensive test suite in progress (release blocker)
-
-### What Changed in v0.12.0
-
-- ✅ Added `core/token_counter.py` - Provider-specific tokenizer integration
-- ✅ Added `/v1/estimate-tokens` endpoint - Pre-run cost estimation
-- ✅ Added `/v1/classifiers` endpoint - List classification models
-- ✅ Enhanced worker token tracking - Per-document usage breakdown
-- ✅ Added classification Layer 1.5 - Optional pre-processing step
-- ✅ Updated frontend - "Estimate Cost" button and modal
-- ✅ Added tokenizer dependencies - tiktoken (required), transformers (optional)
-- ✅ Created test infrastructure - Stubs and fixtures documentation
-
-### Go/No-Go Criteria (Decision: Nov 22, 2025)
-
-**Release Blockers:**
-- [ ] Test coverage ≥80%
-- [ ] Zero critical (P0) bugs
-- [ ] Performance acceptable (<5s per document)
-- [ ] Documentation complete
-
-**Target:** Ship v0.12.0 on November 28, 2025 (75% probability)
-
----
-
-## Simplified Provider Architecture (v0.11.0+)
-
-This system implements a **dramatically simplified** vendor-to-LLM mapping architecture, eliminating ~1000 lines of complex code and multiple registration points.
-
-### Key Simplifications ✅
-
-**Single Registry Pattern:**
-- **Before:** 3 separate registries (catalog, factory, fallback) with string-based imports
-- **After:** 1 unified registry (`core/providers.py`) with direct function references
-- **Impact:** 67% reduction in registration points, no more import failures
-
-**Standardized Field Naming:**
-- **Before:** 4 variants (`runtime_model`, `model`, `model_id`, `active_model`)
-- **After:** All providers use `config.model` consistently
-- **Impact:** 75% reduction in field variants, simplified metadata extraction
-
-**Aligned Defaults:**
-- **Before:** 5 different defaults across frontend/API/worker/pipeline
-- **After:** Single default: `"openrouter"` + `"meta-llama/llama-3.3-70b-instruct"`
-- **Impact:** Predictable behavior, consistent user experience
-
-**Simplified Config Loading:**
-- **Before:** 70+ lines with 7 elif blocks + magic provider swapping
-- **After:** 30 lines with dictionary dispatch pattern
-- **Impact:** 57% code reduction, no surprises
-
-### Architecture Components
-
-```
-core/providers.py          # NEW - Unified registry with direct function refs
-core/config.py             # Updated - Standardized `model` field, dict dispatch
-core/extractor_factory.py  # Simplified - Wrapper for backward compat
-core/pipeline_metadata.py  # Cleaned - Single-strategy extraction (was 4)
-api/main.py                # Updated - /v1/providers, startup validation
-```
-
-### Adding a New Provider (v0.11.0+)
-
-**Time Required:** ~15 minutes (was ~2 hours)
-
-**Steps:**
-1. Create config class in `core/config.py` with `model` field
-2. Create adapter in `core/myprovider_adapter.py`
-3. Register in `core/providers.py:PROVIDERS` dictionary
-4. Add to `core/config.py:load_provider_config()` registry
-
-**That's it!** No more:
-- ❌ String-based factory callables
-- ❌ Multiple registration points
-- ❌ Fallback dictionaries
-- ❌ Complex introspection logic
-- ❌ Magic provider swapping
-
-### Breaking Changes (v0.11.0)
-
-**Default Provider Changed:**
-- UI default: ~~`"google"`~~ → `"openrouter"`
-- API default: `"openrouter"` (was inconsistent)
-- Worker default: `"openrouter"` (aligned)
-
-**Environment Variables:**
-- LangExtract: ~~`GEMINI_MODEL_ID`~~ → `GEMINI_MODEL` (backward compat: checks both)
-
-**Internal Changes (API unchanged):**
-- OpenRouterConfig: ~~`runtime_model`~~ + ~~`active_model`~~ → `model`
-- LangExtractConfig: ~~`model_id`~~ → `model`
-- GeminiEventConfig: ~~`model_id`~~ → `model`
-
-### Documentation
-
-**Comprehensive Guide:** See `docs/PROVIDER_ARCHITECTURE.md` for:
-- Complete architecture diagrams
-- Data flow documentation
-- Troubleshooting guide
-- Performance metrics
-- Future enhancements
-
-### Metrics
-
-| Metric | Before v0.11.0 | After v0.11.0 | Improvement |
-|--------|----------------|---------------|-------------|
-| Registration points | 3 | 1 | 67% ↓ |
-| Lines of code | ~1500 | ~600 | 60% ↓ |
-| Field variants | 4 | 1 | 75% ↓ |
-| Time to add provider | ~2 hours | ~15 min | 87% ↓ |
-
----
-
-## Guardrails Architecture (v0.2.0+)
-
-This system implements production-grade microservice guardrails:
-
-### Service Boundaries ✅
-- **API Service:** Owns clients, cases, runs, documents (CRUD)
-- **Worker Service:** Owns events, artifacts (write-only via processing)
-- **Communication:** Redis queues + PostgreSQL database only
-- **No Cross-Imports:** API never imports worker code, uses string-based RQ enqueues
-- **Enforced:** Dockerfiles copied service-specific code only
-
-### Data Contracts ✅
-- **API Read/Write:** clients, cases, runs, documents
-- **Worker Read-Only:** clients, cases, runs, documents
-- **Worker Write-Only:** events, artifacts
-- **Field Ownership:** API owns run.run_metadata (not metadata)
-
-### Immutable Images ✅
-- **Production:** docker-compose.yml uses COPY only (immutable)
-- **Development:** docker-compose.override.yml provides hot-reload mounts
-- **Deployment:** Use `docker compose -f docker-compose.yml up` (production)
-- **Development:** Use `docker compose up` (loads override automatically)
-
-### Operational Requirements
-- API latency: P95 < 200ms on CRUD operations
-- Worker isolation: Killing workers doesn't break API
-- Queue monitoring: Track queued/started/failed job counts
-- Horizontal scaling: Workers scale stateless (docker compose up --scale worker=N)
-- Idempotency: Document processing retries are safe
-
-### Environment Setup
 ```bash
 # Development (with hot-reload)
 docker compose up
 
-# Production (immutable images only)
+# Production (immutable images)
 docker compose -f docker-compose.yml up -d
 
-# Scale workers in production
+# Scale workers
 docker compose -f docker-compose.yml up -d --scale worker=3
+
+# Service management
+./start.sh start      # Start all services
+./start.sh stop       # Stop all services
+./start.sh status     # Check service health
+./start.sh logs       # View logs
+./start.sh clean      # Clean and restart
+
+# Run tests
+pytest tests/ -v                                    # All tests
+pytest tests/test_api_endpoints.py -v               # API endpoint tests
+pytest tests/test_token_counter.py -v               # Unit tests
+./run_integration_tests.sh                          # Integration tests with env setup
+./run_integration_tests.sh tests/test_specific.py   # Run specific integration test
+
+# Database migrations
+alembic upgrade head                    # Apply migrations
+alembic revision --autogenerate -m "description"  # Create migration
 ```
 
-### Import Rules
-- **NEVER:** `from worker import ...` in API code
-- **ALWAYS:** Use string-based RQ enqueues: `queue.enqueue("worker.tasks.process_run")`
-- **NEVER:** `from api import ...` in Worker code
-- **ALWAYS:** Use database/Redis for all communication
+## Architecture
 
-### What Changed in v0.2.0
-- ✅ Removed `COPY worker` from Dockerfile.api
-- ✅ Removed `COPY api` from Dockerfile.worker
-- ✅ Removed bind mounts from docker-compose.yml (production)
-- ✅ Created docker-compose.override.yml for development
+### Service Boundaries (Microservice Pattern)
+- **API Service** (`api/`): Owns clients, cases, runs, documents (CRUD). FastAPI on port 8000.
+- **Worker Service** (`worker/`): Owns events, artifacts (write-only). Background processing via RQ.
+- **Communication**: Redis queues + PostgreSQL only. No cross-imports between API and Worker.
 
----
+### Key Directories
+```
+core/               # Extraction pipeline and LLM adapters
+├── providers.py    # Unified provider registry (single source of truth)
+├── config.py       # Provider config classes (all use `model` field)
+├── *_adapter.py    # LLM provider adapters (openrouter, anthropic, openai, etc.)
+├── legal_pipeline_refactored.py  # Main extraction pipeline
+├── token_counter.py # Token counting for cost estimation
+└── docling_adapter.py  # PDF text extraction
 
-## Event-Driven Architecture (v0.4.0+)
+api/                # FastAPI application
+├── main.py         # REST endpoints
+├── schemas.py      # Pydantic models
+├── auth.py         # JWT authentication
+└── event_processor.py  # Consumes worker events
 
-### Overview
-The system has been upgraded to use event-driven communication between Worker and API services, ensuring strict service boundary compliance and enabling independent scaling.
+worker/             # Background job processing
+├── tasks_refactored.py  # CANONICAL task implementation (use this, not tasks.py)
+└── main.py         # Worker entry point
 
-### Worker → API Communication Pattern
-- **Worker:** Processes documents, emits status events via Redis pub/sub
-- **API:** Subscribes to worker events, updates API-owned entities (runs/documents)
-- **Result:** Clean service boundaries, no direct database mutations across services
+infra/              # Shared infrastructure
+├── models.py       # SQLAlchemy ORM models
+├── database.py     # Database session management
+├── storage.py      # MinIO/S3 storage client
+├── queue.py        # Redis/RQ job queue
+└── worker_events.py # Redis pub/sub for worker→API events
 
-### Key Components
+frontend/           # Static web UI (served via nginx)
+```
 
-#### 1. Event System (`infra/worker_events.py`)
-- `WorkerEventEmitter`: Worker-side component that publishes events to Redis
-- `WorkerEventConsumer`: API-side component that subscribes to events
-- `WorkerEvent`: Event dataclass with JSON serialization
-- Supports run lifecycle events: `RUN_STARTED`, `RUN_COMPLETED`, `RUN_FAILED`
-- Supports document lifecycle events: `DOCUMENT_STARTED`, `DOCUMENT_COMPLETED`, `DOCUMENT_FAILED`
-- Persists events in Redis with 7-day expiry for audit trail
+### Event-Driven Worker → API Communication
+Workers emit events via Redis pub/sub (`worker:events`). API's `event_processor.py` subscribes and updates Run/Document status. This maintains strict service boundaries.
 
-#### 2. Event Processor (`api/event_processor.py`)
-- `APIEventProcessor`: Runs in background thread consuming Redis events
-- Updates Run/Document status based on worker events
-- Maintains timing metadata (total_seconds, docling_seconds, extractor_seconds)
-- Tracks cost estimates (cost_usd)
-- Handles all lifecycle transitions with proper error handling
+### Provider System (v0.11.0+)
+Single registry in `core/providers.py`. All providers use standardized `config.model` field.
 
-#### 3. Refactored Worker Tasks (`worker/tasks_refactored.py`)
-- **CANONICAL implementation** for worker processing
-- **Old `worker/tasks.py` is deprecated** - use `tasks_refactored.py` exclusively
-- Emits events instead of directly mutating Run/Document status
-- READ-ONLY access to clients, cases, runs, documents
-- WRITE-ONLY access to events, artifacts (worker's primary output)
-- All job routing via `infra/queue.py` automatically uses refactored tasks
+**Adding a new provider:**
+1. Create config class in `core/config.py` with `model` field
+2. Create adapter in `core/myprovider_adapter.py`
+3. Register in `core/providers.py:PROVIDERS`
+4. Add to `core/config.py:load_provider_config()` registry
 
-### Operational Changes
-- Event processor auto-starts on API startup (lifespan context manager)
-- Event processor gracefully shuts down on API shutdown
-- Job enqueuing automatically routes to `worker.tasks_refactored`
-- No changes needed to API endpoints - all backward compatible
+**Default provider:** `openrouter` with model `meta-llama/llama-3.3-70b-instruct`
 
-### Monitoring & Debugging
+## Import Rules
+
+```python
+# NEVER in API code:
+from worker import ...  # Use string-based RQ enqueues instead
+queue.enqueue("worker.tasks_refactored.process_run", ...)
+
+# NEVER in Worker code:
+from api import ...  # Use database/Redis for all communication
+```
+
+## Environment Variables
+
+Required (at least one LLM provider):
+- `OPENROUTER_API_KEY` (recommended)
+- `ANTHROPIC_API_KEY`
+- `OPENAI_API_KEY`
+- `GEMINI_API_KEY`
+- `DEEPSEEK_API_KEY`
+
+Security:
+- `JWT_SECRET_KEY` - Required in production (generate with `openssl rand -hex 32`)
+- `APP_ENV` - `development`, `staging`, or `production`
+
+See `.env.example` for full configuration options.
+
+## Key Endpoints
+
+- `GET /health` - Basic health check
+- `GET /v1/workers/status` - Detailed worker health with heartbeat detection
+- `GET /v1/providers` - List available LLM providers
+- `POST /v1/runs` - Create extraction run
+- `GET /v1/runs` - List runs with pagination
+- `POST /v1/estimate-tokens` - Pre-run cost estimation
+
+## Monitoring
+
 ```bash
-# Monitor live event stream
+# Live event stream
 redis-cli SUBSCRIBE "worker:events"
 
-# Check event history for a specific run
-redis-cli LRANGE "worker:events:history:123" 0 -1
+# Event history for a run
+redis-cli LRANGE "worker:events:history:<run_id>" 0 -1
 
-# Check queue status
+# Queue status
 redis-cli LLEN "rq:queue:default"
 redis-cli LLEN "rq:queue:failed"
 ```
 
-### What Changed in v0.4.0
-- ✅ Added `infra/worker_events.py` - Redis pub/sub event system
-- ✅ Added `api/event_processor.py` - Background event consumer thread
-- ✅ Added `worker/tasks_refactored.py` - Service boundary compliant tasks
-- ✅ Updated `api/main.py` - Event processor lifecycle management
-- ✅ Updated `infra/queue.py` - Job routing to refactored tasks
-- ✅ Added `docs/SERVICE_BOUNDARIES.md` - Comprehensive architecture guide
-- ✅ Marked `worker/tasks.py` as deprecated (kept for reference only)
+## Working with this Codebase
 
----
-
-## Technical Debt (v0.3.0 Sprint)
-
-### Event Provider Import Failures
-**Issue:** Only `langextract` (Gemini) provider is fully working. Other providers (OpenRouter, Anthropic, OpenAI, DeepSeek) defined in `core/event_extractor_catalog.py` fail to register due to import path issues.
-
-**Root Cause:** Factory callables use `src.core.*` import paths that fail to resolve in worker runtime context.
-
-**Files Affected:**
-- `core/event_extractor_catalog.py` (Lines 51-132) - Defines 7 providers, only langextract works
-- `core/extractor_factory.py` (Lines 229-234) - Import failures silently fail with warnings
-- `frontend/index.html` - Dropdown shows providers that don't work (temporary workaround: langextract is now default option)
-
-**Fix for v0.3.0:**
-1. Change factory_callable import paths from `src.core.*` to absolute/relative imports
-2. Add startup validation that fails loudly if enabled providers can't load
-3. Create `/v1/providers` API endpoint to expose available providers dynamically
-4. Update frontend to fetch provider list from API instead of hardcoding
-
-**Workaround (Current - v0.2.0):**
-- UI dropdown manually updated to show langextract as working option
-- Other providers listed but will error if selected (marked as future work)
-
----
-
-## Worker Heartbeat Monitoring (v0.9.0)
-
-### Overview
-The system implements production-grade worker health monitoring with heartbeat-based liveness detection, enabling automatic stale worker detection and recovery.
-
-### Key Features
-- **Heartbeat Emission:** Workers emit heartbeats to Redis every 10 seconds
-- **Worker Metadata:** Each heartbeat includes hostname, PID, start time, job statistics
-- **Auto-Expiration:** 30-second TTL with automatic cleanup on worker crash/termination
-- **Stale Detection:** Workers not seen for >60 seconds marked as stale
-- **Health Degradation:** System health reflects worker availability and heartbeat freshness
-
-### Monitoring Endpoints
-- **GET /v1/workers/status** - Enhanced endpoint with heartbeat data
-  - Per-worker liveness status (last_beat, seconds_ago, is_alive)
-  - New metrics: workers_with_heartbeat, workers_stale
-  - Health degradation detection for alerting
-
-### Health Semantics
-- **"healthy":** Workers active AND heartbeats recent (<60s)
-- **"degraded":** Zero workers registered OR any stale heartbeats detected
-- **"unhealthy":** Critical system failures (database/Redis unavailable)
-
-### Operational Impact
-- Enables automatic detection of crashed/hung workers
-- Provides foundation for auto-restart mechanisms
-- Improves operational visibility into worker fleet health
-- Supports horizontal scaling with real-time worker tracking
-
-### What Changed in v0.9.0
-- ✅ Added heartbeat emission to worker startup (infra/worker_lifecycle.py)
-- ✅ Enhanced /v1/workers/status with heartbeat metadata
-- ✅ Implemented stale worker detection (60s threshold)
-- ✅ Added health degradation based on heartbeat freshness
-- ✅ Created OPERATIONS_RUNBOOK.md for troubleshooting
-
----
-
-## Testing Infrastructure (v0.9.1)
-
-### Overview
-Comprehensive testing infrastructure to validate LLM provider integration and export functionality, ensuring production readiness.
-
-### Test Suites Added
-
-#### 1. Provider Validation (test_providers.py)
-- Tests all 5 configured LLM providers (OpenRouter, Anthropic, OpenAI, LangExtract, DeepSeek)
-- Validates API key configuration and authentication
-- Performs real PDF extraction with quality assessment
-- Reports per-provider costs and success rates
-- **Current Results:** 3/5 providers working (OpenRouter, Anthropic, OpenAI)
-
-#### 2. Export Functionality (test_export_functionality.py)
-- Tests CSV, XLSX, and JSON export generation
-- Validates output structure and content integrity
-- Verifies field mapping and data preservation
-- **Current Results:** All 3 export formats working (100% success)
-
-### Documentation Improvements
-- **OPERATIONS_RUNBOOK.md:** Troubleshooting procedures, monitoring setup, escalation paths
-- **PROVIDER_TEST_RESULTS.md:** Detailed provider validation results (235 lines)
-- **EXPORT_TEST_RESULTS.md:** Export format analysis (245 lines)
-- Enhanced API schemas with comprehensive docstrings
-
-### Bug Fixes
-- Fixed TypeError in provider tests (len(None) prevention)
-- Corrected Redis key patterns in documentation
-- Fixed heartbeat timing documentation (10s/30s/60s semantics)
-- Updated LangExtract failure root cause (Python >=3.10 requirement)
-
-### What Changed in v0.9.1
-- ✅ Added test_providers.py - LLM provider validation suite
-- ✅ Added test_export_functionality.py - Export format validation
-- ✅ Created OPERATIONS_RUNBOOK.md - Comprehensive operations guide
-- ✅ Enhanced error handling in LangExtract with retry logic
-- ✅ Fixed documentation accuracy (Redis keys, timing semantics)
-- ✅ Added CHANGELOG.md - Version history tracking
+- **CRITICAL:** For external library issues, WebSearch FIRST for latest docs before attempting fixes
+- Always ask for clarification on gaps rather than assuming
+- Refer to the parent POC at `~/docling_langextract_testing` for context
+- `worker/tasks.py` is deprecated - use `worker/tasks_refactored.py`
+- Working providers: OpenRouter, Anthropic, OpenAI (3/5 validated)

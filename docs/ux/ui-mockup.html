@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UI Mockup: Current vs Streamlined</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .mockup-container {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        .current-ui {
+            background: #f9fafb;
+        }
+        .streamlined-ui {
+            background: #ffffff;
+        }
+        .comparison-label {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            font-weight: bold;
+            padding: 8px;
+            text-align: center;
+            border-bottom: 2px solid;
+        }
+        .current-label {
+            background: #fee2e2;
+            border-color: #ef4444;
+            color: #991b1b;
+        }
+        .streamlined-label {
+            background: #dcfce7;
+            border-color: #22c55e;
+            color: #166534;
+        }
+        .space-saver {
+            background: #fef3c7;
+            border: 1px dashed #f59e0b;
+            padding: 2px;
+            margin: 1px 0;
+            font-size: 10px;
+            color: #92400e;
+        }
+    </style>
+</head>
+<body class="mockup-container">
+    <div class="flex h-screen">
+        <!-- CURRENT UI (Left) -->
+        <div class="w-1/2 border-r border-gray-300 overflow-y-auto">
+            <div class="comparison-label current-label">CURRENT UI (Heavy)</div>
+            
+            <!-- Header -->
+            <div class="bg-white rounded-lg shadow-md p-6 mb-6 m-4">
+                <div class="flex justify-between items-center">
+                    <h1 class="text-3xl font-bold text-gray-800">Legal Events Extraction v2</h1>
+                    <div class="flex items-center space-x-4">
+                        <div class="text-xs bg-gray-100 px-2 py-1 rounded">API: same-origin</div>
+                        <div class="text-sm">✅ healthy</div>
+                        <div class="bg-blue-500 text-white px-3 py-1 rounded text-sm">Login</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Document Parsing Card -->
+            <div class="bg-white rounded-lg shadow-md p-6 mb-6 m-4">
+                <h2 class="text-xl font-semibold mb-4">Document Parsing Settings</h2>
+                <div class="mb-2">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Document Extractor (OCR/Vision)</label>
+                    <select class="w-full p-2 border rounded focus:ring-blue-500 focus:border-blue-500">
+                        <option>Docling (Local OCR) - FREE</option>
+                    </select>
+                    <p class="text-xs text-gray-500 mt-1">Step 1: Parse PDF documents to extract text and structure</p>
+                </div>
+            </div>
+
+            <!-- Event Extraction Card -->
+            <div class="bg-white rounded-lg shadow-md p-6 mb-6 m-4">
+                <h2 class="text-xl font-semibold mb-4">Event Extraction Settings</h2>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Event Extractor Provider</label>
+                        <select class="w-full p-2 border rounded focus:ring-blue-500 focus:border-blue-500">
+                            <option>OpenRouter</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Model</label>
+                        <select class="w-full p-2 border rounded focus:ring-blue-500 focus:border-blue-500">
+                            <option>llama-3.3-70b</option>
+                        </select>
+                    </div>
+                </div>
+                <p class="text-xs text-gray-500 mt-2">Step 2: Extract legal events from parsed documents using LLM</p>
+            </div>
+
+            <!-- Create Client Card -->
+            <div class="bg-white rounded-lg shadow-md p-6 mb-6 m-4">
+                <h2 class="text-xl font-semibold mb-4">Step 3: Create Client</h2>
+                <div class="flex space-x-4">
+                    <input type="text" placeholder="Enter client name" class="flex-1 p-2 border rounded focus:ring-blue-500 focus:border-blue-500">
+                    <button class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">Create Client</button>
+                </div>
+                <div class="mt-2 text-sm text-green-600">✅ Created: Client ID 123</div>
+            </div>
+
+            <!-- Create Case Card -->
+            <div class="bg-white rounded-lg shadow-md p-6 mb-6 m-4">
+                <h2 class="text-xl font-semibold mb-4">Step 4: Create Case</h2>
+                <div class="grid grid-cols-2 gap-4">
+                    <input type="text" placeholder="Client ID (from step 3)" class="p-2 border rounded focus:ring-blue-500 focus:border-blue-500">
+                    <input type="text" placeholder="Enter case name" class="p-2 border rounded focus:ring-blue-500 focus:border-blue-500">
+                </div>
+                <button class="mt-4 bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">Create Case</button>
+                <div class="mt-2 text-sm text-green-600">✅ Created: Case ID 456</div>
+            </div>
+
+            <!-- Upload Card -->
+            <div class="bg-white rounded-lg shadow-md p-6 mb-6 m-4">
+                <h2 class="text-xl font-semibold mb-4">Step 5: Upload Documents & Start Run</h2>
+                <div class="grid grid-cols-2 gap-4 mb-4">
+                    <input type="text" placeholder="Case ID (from step 4)" class="p-2 border rounded focus:ring-blue-500 focus:border-blue-500">
+                    <input type="file" multiple class="p-2 border rounded">
+                </div>
+                <button class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">Start Processing Run</button>
+                <div class="mt-2 text-sm text-blue-600">📄 Processing... 2/5 documents</div>
+            </div>
+        </div>
+
+        <!-- STREAMLINED UI (Right) -->
+        <div class="w-1/2 overflow-y-auto">
+            <div class="comparison-label streamlined-label">STREAMLINED UI (Compact)</div>
+            
+            <!-- Header -->
+            <div class="bg-white border border-gray-200 p-3 mb-3 m-2">
+                <div class="flex justify-between items-center">
+                    <h1 class="text-lg font-medium text-gray-900">Legal Events Extraction</h1>
+                    <div class="flex items-center space-x-2">
+                        <div class="text-xs">✅</div>
+                        <div class="bg-blue-500 text-white px-2 py-1 text-xs">Login</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Document Parsing -->
+            <div class="bg-white border border-gray-200 p-3 mb-3 m-2">
+                <h2 class="text-sm font-medium mb-2">1. Document Parser</h2>
+                <select class="w-full p-1 border text-sm">
+                    <option>Docling (Local OCR) - FREE</option>
+                </select>
+            </div>
+
+            <!-- Event Extraction -->
+            <div class="bg-white border border-gray-200 p-3 mb-3 m-2">
+                <h2 class="text-sm font-medium mb-2">2. Event Extractor</h2>
+                <div class="grid grid-cols-2 gap-2">
+                    <select class="p-1 border text-sm">
+                        <option>OpenRouter</option>
+                    </select>
+                    <select class="p-1 border text-sm">
+                        <option>llama-3.3-70b</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Create Client -->
+            <div class="bg-white border border-gray-200 p-3 mb-3 m-2">
+                <h2 class="text-sm font-medium mb-2">3. Create Client</h2>
+                <div class="flex space-x-2">
+                    <input type="text" placeholder="Client name" class="flex-1 p-1 border text-sm">
+                    <button class="bg-blue-500 text-white px-2 py-1 text-sm">Create</button>
+                </div>
+                <div class="mt-1 text-xs text-green-600">✅ ID: 123</div>
+            </div>
+
+            <!-- Create Case -->
+            <div class="bg-white border border-gray-200 p-3 mb-3 m-2">
+                <h2 class="text-sm font-medium mb-2">4. Create Case</h2>
+                <div class="grid grid-cols-2 gap-2">
+                    <input type="text" placeholder="Client ID" class="p-1 border text-sm">
+                    <input type="text" placeholder="Case name" class="p-1 border text-sm">
+                </div>
+                <button class="mt-2 bg-blue-500 text-white px-2 py-1 text-sm">Create</button>
+                <div class="mt-1 text-xs text-green-600">✅ ID: 456</div>
+            </div>
+
+            <!-- Upload -->
+            <div class="bg-white border border-gray-200 p-3 mb-3 m-2">
+                <h2 class="text-sm font-medium mb-2">5. Upload & Process</h2>
+                <div class="grid grid-cols-2 gap-2 mb-2">
+                    <input type="text" placeholder="Case ID" class="p-1 border text-sm">
+                    <input type="file" multiple class="p-1 border text-sm">
+                </div>
+                <button class="bg-green-500 text-white px-2 py-1 text-sm">Start Run</button>
+                <div class="mt-1 text-xs text-blue-600">📄 2/5 docs</div>
+            </div>
+
+            <!-- Space Savings Indicator -->
+            <div class="m-2 p-2 bg-green-50 border border-green-200 rounded">
+                <div class="text-sm font-medium text-green-800">Space Savings: ~40%</div>
+                <div class="text-xs text-green-600 mt-1">
+                    • Removed shadows & rounded corners<br>
+                    • Reduced padding (24px→12px)<br>
+                    • Smaller fonts (3xl→lg, xl→sm)<br>
+                    • Tighter margins (24px→12px)<br>
+                    • Removed hover states & focus rings<br>
+                    • Simplified header layout
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Interactive Comparison -->
+    <div class="fixed bottom-4 left-4 bg-white border border-gray-300 rounded-lg p-3 shadow-lg">
+        <div class="text-sm font-medium mb-2">Toggle Elements:</div>
+        <div class="space-x-2">
+            <button onclick="toggleShadows()" class="text-xs bg-gray-200 px-2 py-1 rounded">Shadows</button>
+            <button onclick="togglePadding()" class="text-xs bg-gray-200 px-2 py-1 rounded">Padding</button>
+            <button onclick="toggleFonts()" class="text-xs bg-gray-200 px-2 py-1 rounded">Fonts</button>
+        </div>
+    </div>
+
+    <script>
+        function toggleShadows() {
+            const cards = document.querySelectorAll('.shadow-md');
+            cards.forEach(card => card.classList.toggle('shadow-md'));
+        }
+        
+        function togglePadding() {
+            const cards = document.querySelectorAll('[class*="p-6"]');
+            cards.forEach(card => {
+                if (card.classList.contains('p-6')) {
+                    card.classList.remove('p-6');
+                    card.classList.add('p-3');
+                } else if (card.classList.contains('p-3')) {
+                    card.classList.remove('p-3');
+                    card.classList.add('p-6');
+                }
+            });
+        }
+        
+        function toggleFonts() {
+            const headers = document.querySelectorAll('.text-xl, .text-3xl');
+            headers.forEach(header => {
+                if (header.classList.contains('text-xl')) {
+                    header.classList.remove('text-xl', 'font-semibold');
+                    header.classList.add('text-sm', 'font-medium');
+                } else if (header.classList.contains('text-3xl')) {
+                    header.classList.remove('text-3xl', 'font-bold');
+                    header.classList.add('text-lg', 'font-medium');
+                }
+            });
+        }
+    </script>
+</body>
+</html>

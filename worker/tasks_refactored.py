@@ -217,7 +217,7 @@ def process_run(run_id: int, provider: str = "openrouter", model: str = None) ->
                         text_for_cls = extracted_text
                         cls_result = classifier.classify(text_for_cls, document_title=doc.filename)
                         # Persist in memory; uploaded as artifact at end of run
-                        classification_results[str(doc.id)] = {
+                        classification_results[doc.filename] = {
                             'primary': cls_result.get('primary'),
                             'confidence': cls_result.get('confidence'),
                             'model': cls_result.get('model'),

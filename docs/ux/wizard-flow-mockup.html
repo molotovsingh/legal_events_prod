@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wizard Flow UX Design - Legal Events Extraction</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .step-indicator {
+            transition: all 0.3s ease;
+        }
+        .step-active {
+            background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+            color: white;
+        }
+        .step-completed {
+            background: #10b981;
+            color: white;
+        }
+        .file-drop-zone {
+            border: 2px dashed #cbd5e1;
+            transition: all 0.3s ease;
+        }
+        .file-drop-zone:hover {
+            border-color: #3b82f6;
+            background: #f0f9ff;
+        }
+        .file-drop-zone.dragover {
+            border-color: #1d4ed8;
+            background: #dbeafe;
+        }
+        .smart-setting {
+            background: linear-gradient(135deg, #f0f9ff, #e0f2fe);
+            border: 1px solid #0ea5e9;
+        }
+        .goal-option {
+            transition: all 0.2s ease;
+        }
+        .goal-option:hover {
+            background: #f8fafc;
+            border-color: #3b82f6;
+        }
+        .goal-option.selected {
+            background: #eff6ff;
+            border-color: #3b82f6;
+        }
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .slide-in {
+            animation: slideIn 0.5s ease-out;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <!-- Header -->
+    <div class="bg-white border-b border-gray-200">
+        <div class="max-w-4xl mx-auto px-4 py-4">
+            <div class="flex justify-between items-center">
+                <h1 class="text-xl font-semibold text-gray-900">Legal Events Extraction</h1>
+                <div class="flex items-center space-x-3">
+                    <button class="text-gray-500 hover:text-gray-700">Help</button>
+                    <div class="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white text-sm font-medium">JD</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Progress Bar -->
+    <div class="bg-white border-b border-gray-200">
+        <div class="max-w-4xl mx-auto px-4 py-3">
+            <div class="flex items-center justify-between mb-2">
+                <span class="text-sm font-medium text-gray-700">Step 1 of 3: Configure Processing</span>
+                <span class="text-sm text-gray-500">60% Complete</span>
+            </div>
+            <div class="flex space-x-2">
+                <div class="step-indicator step-active flex-1 h-2 rounded-full"></div>
+                <div class="step-indicator step-active flex-1 h-2 rounded-full"></div>
+                <div class="step-indicator bg-gray-200 flex-1 h-2 rounded-full"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="max-w-4xl mx-auto px-4 py-6">
+        <!-- Documents Section -->
+        <div class="bg-white rounded-lg border border-gray-200 p-6 mb-6 slide-in">
+            <div class="flex items-center mb-4">
+                <div class="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center mr-3">
+                    <span class="text-blue-600 font-semibold">📄</span>
+                </div>
+                <h2 class="text-lg font-medium text-gray-900">Documents Selected</h2>
+                <span class="ml-3 bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full">3 PDFs • 2.4MB</span>
+            </div>
+            
+            <div class="space-y-2 mb-4">
+                <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <div class="flex items-center">
+                        <span class="text-red-500 mr-3">📄</span>
+                        <div>
+                            <div class="font-medium text-sm">contract_2024.pdf</div>
+                            <div class="text-xs text-gray-500">1.2MB • Legal Contract</div>
+                        </div>
+                    </div>
+                    <button class="text-gray-400 hover:text-red-500">×</button>
+                </div>
+                <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <div class="flex items-center">
+                        <span class="text-red-500 mr-3">📄</span>
+                        <div>
+                            <div class="font-medium text-sm">invoice_march.pdf</div>
+                            <div class="text-xs text-gray-500">0.8MB • Invoice Document</div>
+                        </div>
+                    </div>
+                    <button class="text-gray-400 hover:text-red-500">×</button>
+                </div>
+                <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <div class="flex items-center">
+                        <span class="text-red-500 mr-3">📄</span>
+                        <div>
+                            <div class="font-medium text-sm">legal_notice.pdf</div>
+                            <div class="text-xs text-gray-500">0.4MB • Legal Notice</div>
+                        </div>
+                    </div>
+                    <button class="text-gray-400 hover:text-red-500">×</button>
+                </div>
+            </div>
+
+            <div class="file-drop-zone p-6 rounded-lg text-center cursor-pointer" onclick="document.getElementById('fileInput').click()">
+                <div class="text-blue-500 mb-2">+ Add more documents</div>
+                <div class="text-xs text-gray-500">Drag files here or click to browse</div>
+                <input type="file" id="fileInput" multiple accept=".pdf,.txt,.doc,.docx" class="hidden">
+            </div>
+        </div>
+
+        <!-- Processing Goal Section -->
+        <div class="bg-white rounded-lg border border-gray-200 p-6 mb-6 slide-in" style="animation-delay: 0.1s">
+            <div class="flex items-center mb-4">
+                <div class="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center mr-3">
+                    <span class="text-green-600 font-semibold">🎯</span>
+                </div>
+                <h2 class="text-lg font-medium text-gray-900">Processing Goal</h2>
+            </div>
+            
+            <div class="space-y-3">
+                <div class="goal-option selected p-4 border-2 border-gray-200 rounded-lg cursor-pointer">
+                    <div class="flex items-center">
+                        <input type="radio" name="goal" checked class="mr-3">
+                        <div class="flex-1">
+                            <div class="font-medium text-sm">Extract all legal events</div>
+                            <div class="text-xs text-gray-500">Comprehensive extraction of deadlines, hearings, filings</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="goal-option p-4 border-2 border-gray-200 rounded-lg cursor-pointer">
+                    <div class="flex items-center">
+                        <input type="radio" name="goal" class="mr-3">
+                        <div class="flex-1">
+                            <div class="font-medium text-sm">Find specific dates and deadlines</div>
+                            <div class="text-xs text-gray-500">Focus only on time-sensitive information</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="goal-option p-4 border-2 border-gray-200 rounded-lg cursor-pointer">
+                    <div class="flex items-center">
+                        <input type="radio" name="goal" class="mr-3">
+                        <div class="flex-1">
+                            <div class="font-medium text-sm">Identify parties and obligations</div>
+                            <div class="text-xs text-gray-500">Extract involved entities and their responsibilities</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Smart Settings Section -->
+        <div class="bg-white rounded-lg border border-gray-200 p-6 mb-6 slide-in" style="animation-delay: 0.2s">
+            <div class="flex items-center mb-4">
+                <div class="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center mr-3">
+                    <span class="text-purple-600 font-semibold">⚡</span>
+                </div>
+                <h2 class="text-lg font-medium text-gray-900">Smart Settings</h2>
+                <span class="ml-3 bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full">Recommended</span>
+            </div>
+            
+            <div class="smart-setting p-4 rounded-lg mb-4">
+                <div class="flex items-start">
+                    <input type="checkbox" checked class="mt-1 mr-3">
+                    <div class="flex-1">
+                        <div class="font-medium text-sm mb-1">OpenRouter + Llama-3.3-70B</div>
+                        <div class="text-xs text-gray-600">Best accuracy for legal documents • ~$0.002 per page</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="smart-setting p-4 rounded-lg mb-4">
+                <div class="flex items-start">
+                    <input type="checkbox" checked class="mt-1 mr-3">
+                    <div class="flex-1">
+                        <div class="font-medium text-sm mb-1">Local OCR for clear scans</div>
+                        <div class="text-xs text-gray-600">Free processing for high-quality PDFs</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="smart-setting p-4 rounded-lg mb-4">
+                <div class="flex items-start">
+                    <input type="checkbox" class="mt-1 mr-3">
+                    <div class="flex-1">
+                        <div class="font-medium text-sm mb-1">Email parsing for .eml files</div>
+                        <div class="text-xs text-gray-600">Extract events from email threads and attachments</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex items-center justify-between pt-4 border-t border-gray-200">
+                <button class="text-blue-600 hover:text-blue-700 text-sm font-medium">Customize Settings →</button>
+                <div class="text-xs text-gray-500">
+                    Estimated cost: <span class="font-medium text-gray-700">$0.006</span> • 
+                    Estimated time: <span class="font-medium text-gray-700">2-3 minutes</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="flex space-x-4 slide-in" style="animation-delay: 0.3s">
+            <button class="flex-1 bg-gray-200 text-gray-800 py-3 px-6 rounded-lg font-medium hover:bg-gray-300 transition">
+                Back to Documents
+            </button>
+            <button class="flex-1 bg-blue-600 text-white py-3 px-6 rounded-lg font-medium hover:bg-blue-700 transition">
+                Start Processing →
+            </button>
+        </div>
+
+        <!-- Info Box -->
+        <div class="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4 slide-in" style="animation-delay: 0.4s">
+            <div class="flex items-start">
+                <span class="text-blue-600 mr-2">ℹ️</span>
+                <div class="text-sm text-blue-800">
+                    <div class="font-medium mb-1">Processing will begin immediately</div>
+                    <div class="text-xs">You can monitor progress in real-time and download results as soon as they're ready. All documents are processed securely and deleted after 7 days.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Add interactivity for goal selection
+        document.querySelectorAll('.goal-option').forEach(option => {
+            option.addEventListener('click', function() {
+                document.querySelectorAll('.goal-option').forEach(opt => opt.classList.remove('selected'));
+                this.classList.add('selected');
+                this.querySelector('input[type="radio"]').checked = true;
+            });
+        });
+
+        // Add drag and drop functionality
+        const dropZone = document.querySelector('.file-drop-zone');
+        
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('dragover');
+        });
+        
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('dragover');
+        });
+        
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            // Handle file drop here
+        });
+    </script>
+</body>
+</html>

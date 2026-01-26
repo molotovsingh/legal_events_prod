@@ -1,0 +1,10 @@
+# Token counting and LLM provider dependencies
+tiktoken>=0.5.0
+transformers>=4.21.0
+torch>=1.12.0
+numpy>=1.21.0
+
+# Optional providers (uncomment as needed)
+# openai>=1.0.0
+# anthropic>=0.7.0
+# google-generativeai>=0.3.0

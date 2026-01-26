@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Adaptive UX - Legal Events Extraction</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .adaptive-section {
+            transition: all 0.3s ease;
+        }
+        .power-tools-collapsed {
+            max-height: 60px;
+            overflow: hidden;
+        }
+        .power-tools-expanded {
+            max-height: 2000px;
+        }
+        .user-mode-solo .power-tools {
+            opacity: 0.7;
+        }
+        .user-mode-firm .power-tools {
+            opacity: 1;
+        }
+        .quick-start-highlight {
+            background: linear-gradient(135deg, #f0f9ff, #e0f2fe);
+            border: 2px solid #0ea5e9;
+        }
+        .file-drop-zone {
+            border: 2px dashed #cbd5e1;
+            transition: all 0.3s ease;
+        }
+        .file-drop-zone:hover {
+            border-color: #3b82f6;
+            background: #f0f9ff;
+        }
+        .file-drop-zone.dragover {
+            border-color: #1d4ed8;
+            background: #dbeafe;
+        }
+        .recent-item {
+            transition: all 0.2s ease;
+        }
+        .recent-item:hover {
+            background: #f8fafc;
+            border-color: #3b82f6;
+        }
+        .power-tool-section {
+            border-left: 3px solid #3b82f6;
+            transition: all 0.3s ease;
+        }
+        .power-tool-section:hover {
+            background: #f8fafc;
+        }
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .slide-in {
+            animation: slideIn 0.5s ease-out;
+        }
+        .mode-toggle {
+            transition: all 0.3s ease;
+        }
+        .mode-toggle.active {
+            background: #3b82f6;
+            color: white;
+        }
+        .solo-mode .quick-start {
+            background: linear-gradient(135deg, #fef3c7, #fde68a);
+            border: 2px solid #f59e0b;
+        }
+        .firm-mode .bulk-operations {
+            background: linear-gradient(135deg, #dcfce7, #bbf7d0);
+            border: 2px solid #22c55e;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen user-mode-solo">
+    <!-- Header -->
+    <div class="bg-white border-b border-gray-200">
+        <div class="max-w-6xl mx-auto px-4 py-4">
+            <div class="flex justify-between items-center">
+                <h1 class="text-xl font-semibold text-gray-900">Legal Events Extraction</h1>
+                <div class="flex items-center space-x-4">
+                    <!-- User Mode Toggle -->
+                    <div class="flex bg-gray-100 rounded-lg p-1">
+                        <button id="soloMode" class="mode-toggle active px-3 py-1 rounded text-sm font-medium">👤 Solo</button>
+                        <button id="firmMode" class="mode-toggle px-3 py-1 rounded text-sm font-medium">🏢 Firm</button>
+                    </div>
+                    <div class="flex items-center space-x-3">
+                        <button class="text-gray-500 hover:text-gray-700">Help</button>
+                        <div class="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white text-sm font-medium">SK</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="max-w-6xl mx-auto px-4 py-6">
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            
+            <!-- Quick Start Section (Solo Lawyer Focus) -->
+            <div class="lg:col-span-2">
+                <div class="quick-start quick-start-highlight bg-white rounded-lg p-6 mb-6 slide-in">
+                    <div class="flex items-center mb-4">
+                        <div class="w-8 h-8 bg-yellow-100 rounded-full flex items-center justify-center mr-3">
+                            <span class="text-yellow-600 font-semibold">📄</span>
+                        </div>
+                        <h2 class="text-lg font-medium text-gray-900">Quick Start</h2>
+                        <span class="ml-3 bg-yellow-100 text-yellow-800 text-xs px-2 py-1 rounded-full">Solo Friendly</span>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <p class="text-gray-700 mb-4">Upload your legal documents and I'll figure out the best way to process them.</p>
+                        
+                        <div class="file-drop-zone p-8 rounded-lg text-center cursor-pointer mb-4" onclick="document.getElementById('fileInput').click()">
+                            <div class="text-blue-500 mb-2 text-2xl">📁</div>
+                            <div class="font-medium mb-1">Choose files or drag them here</div>
+                            <div class="text-xs text-gray-500">PDF, DOC, DOCX, TXT files supported</div>
+                            <input type="file" id="fileInput" multiple accept=".pdf,.txt,.doc,.docx" class="hidden">
+                        </div>
+                    </div>
+
+                    <!-- Recent Cases for Quick Access -->
+                    <div class="border-t border-gray-200 pt-4">
+                        <div class="text-sm font-medium text-gray-700 mb-2">Or continue with recent cases:</div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+                            <button class="text-left p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition">
+                                <div class="font-medium text-sm">Smith Contract</div>
+                                <div class="text-xs text-gray-500">3 documents ready</div>
+                            </button>
+                            <button class="text-left p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition">
+                                <div class="font-medium text-sm">Johnson Filing</div>
+                                <div class="text-xs text-gray-500">2 documents ready</div>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Recent Work Section (Context for Both) -->
+                <div class="bg-white rounded-lg p-6 slide-in" style="animation-delay: 0.1s">
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center">
+                            <div class="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center mr-3">
+                                <span class="text-green-600 font-semibold">📋</span>
+                            </div>
+                            <h2 class="text-lg font-medium text-gray-900">Recent Work</h2>
+                        </div>
+                        <button class="text-blue-600 hover:text-blue-700 text-sm">View All</button>
+                    </div>
+                    
+                    <div class="space-y-3">
+                        <div class="recent-item flex items-center justify-between p-3 border border-gray-200 rounded-lg">
+                            <div class="flex items-center">
+                                <div class="w-2 h-2 bg-green-500 rounded-full mr-3"></div>
+                                <div>
+                                    <div class="font-medium text-sm">Smith v Acme Corp</div>
+                                    <div class="text-xs text-gray-500">5 events extracted • 2 hours ago</div>
+                                </div>
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                <span class="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">$0.12</span>
+                                <button class="text-blue-600 hover:text-blue-700 text-xs">Export</button>
+                            </div>
+                        </div>
+                        
+                        <div class="recent-item flex items-center justify-between p-3 border border-gray-200 rounded-lg">
+                            <div class="flex items-center">
+                                <div class="w-2 h-2 bg-yellow-500 rounded-full mr-3"></div>
+                                <div>
+                                    <div class="font-medium text-sm">Johnson Contract Review</div>
+                                    <div class="text-xs text-gray-500">Processing (2/3 docs) • 15 min ago</div>
+                                </div>
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                <span class="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded">66%</span>
+                                <button class="text-blue-600 hover:text-blue-700 text-xs">View</button>
+                            </div>
+                        </div>
+                        
+                        <div class="recent-item flex items-center justify-between p-3 border border-gray-200 rounded-lg">
+                            <div class="flex items-center">
+                                <div class="w-2 h-2 bg-blue-500 rounded-full mr-3"></div>
+                                <div>
+                                    <div class="font-medium text-sm">Tech Corp Inc - New Client</div>
+                                    <div class="text-xs text-gray-500">Case created • Yesterday</div>
+                                </div>
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                <span class="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">Ready</span>
+                                <button class="text-blue-600 hover:text-blue-700 text-xs">Upload</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="flex space-x-2 mt-4 pt-4 border-t border-gray-200">
+                        <button class="flex-1 bg-blue-600 text-white py-2 px-4 rounded text-sm hover:bg-blue-700">New Case</button>
+                        <button class="flex-1 bg-gray-200 text-gray-800 py-2 px-4 rounded text-sm hover:bg-gray-300">Export All</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Power Tools Section (Law Firm Features) -->
+            <div class="lg:col-span-1">
+                <div class="power-tools bg-white rounded-lg p-6 power-tools-collapsed slide-in" style="animation-delay: 0.2s">
+                    <div class="flex items-center justify-between mb-4 cursor-pointer" onclick="togglePowerTools()">
+                        <div class="flex items-center">
+                            <div class="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center mr-3">
+                                <span class="text-purple-600 font-semibold">⚡</span>
+                            </div>
+                            <h2 class="text-lg font-medium text-gray-900">Power Tools</h2>
+                            <span class="ml-3 bg-purple-100 text-purple-800 text-xs px-2 py-1 rounded-full">Firm Features</span>
+                        </div>
+                        <div id="powerToolsToggle" class="text-gray-400 transition-transform">▼</div>
+                    </div>
+                    
+                    <div id="powerToolsContent">
+                        <!-- Bulk Operations -->
+                        <div class="power-tool-section p-4 mb-4 bg-gray-50 rounded-lg">
+                            <div class="flex items-center mb-3">
+                                <span class="text-purple-600 mr-2">📁</span>
+                                <h3 class="font-medium text-sm">Bulk Operations</h3>
+                            </div>
+                            <div class="space-y-2">
+                                <div class="flex items-center justify-between">
+                                    <span class="text-xs text-gray-600">8 files selected</span>
+                                    <div class="flex space-x-1">
+                                        <button class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">Process</button>
+                                        <button class="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded">Tag</button>
+                                    </div>
+                                </div>
+                                <div class="grid grid-cols-2 gap-2">
+                                    <select class="text-xs p-1 border rounded">
+                                        <option>Smith Q4</option>
+                                        <option>Johnson Case</option>
+                                    </select>
+                                    <select class="text-xs p-1 border rounded">
+                                        <option>Standard</option>
+                                        <option>Custom</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Firm Management -->
+                        <div class="power-tool-section p-4 mb-4 bg-gray-50 rounded-lg">
+                            <div class="flex items-center mb-3">
+                                <span class="text-purple-600 mr-2">🏢</span>
+                                <h3 class="font-medium text-sm">Firm Management</h3>
+                            </div>
+                            <div class="space-y-2">
+                                <div class="flex justify-between">
+                                    <span class="text-xs text-gray-600">Active Clients</span>
+                                    <span class="text-xs font-medium">45</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-xs text-gray-600">Templates</span>
+                                    <span class="text-xs font-medium">12</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-xs text-gray-600">Team Members</span>
+                                    <span class="text-xs font-medium">3</span>
+                                </div>
+                                <button class="w-full text-xs bg-purple-100 text-purple-700 py-2 rounded hover:bg-purple-200">Manage Firm</button>
+                            </div>
+                        </div>
+
+                        <!-- Analytics -->
+                        <div class="power-tool-section p-4 mb-4 bg-gray-50 rounded-lg">
+                            <div class="flex items-center mb-3">
+                                <span class="text-purple-600 mr-2">📊</span>
+                                <h3 class="font-medium text-sm">Analytics</h3>
+                            </div>
+                            <div class="space-y-2">
+                                <div class="flex justify-between">
+                                    <span class="text-xs text-gray-600">Monthly Volume</span>
+                                    <span class="text-xs font-medium">234 files</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-xs text-gray-600">Monthly Cost</span>
+                                    <span class="text-xs font-medium">$567.89</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-xs text-gray-600">Avg Processing</span>
+                                    <span class="text-xs font-medium">2.3 min</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-xs text-gray-600">Accuracy Rate</span>
+                                    <span class="text-xs font-medium">94.7%</span>
+                                </div>
+                                <button class="w-full text-xs bg-purple-100 text-purple-700 py-2 rounded hover:bg-purple-200">View Reports</button>
+                            </div>
+                        </div>
+
+                        <!-- Quick Actions -->
+                        <div class="space-y-2">
+                            <button class="w-full bg-green-600 text-white py-2 px-4 rounded text-sm hover:bg-green-700">Process All Files</button>
+                            <button class="w-full bg-blue-600 text-white py-2 px-4 rounded text-sm hover:bg-blue-700">Create Template</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Smart Suggestions (Adaptive) -->
+        <div class="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4 slide-in" style="animation-delay: 0.3s">
+            <div class="flex items-start">
+                <span class="text-blue-600 mr-2">💡</span>
+                <div class="text-sm text-blue-800">
+                    <div class="font-medium mb-1">Smart Suggestion</div>
+                    <div id="suggestionText" class="text-xs">Based on your document types, I recommend using OpenRouter with Llama-3.3 for best accuracy at ~$0.002 per page.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Mode Toggle Functionality
+        const soloModeBtn = document.getElementById('soloMode');
+        const firmModeBtn = document.getElementById('firmMode');
+        const body = document.body;
+        
+        soloModeBtn.addEventListener('click', () => {
+            body.className = 'bg-gray-50 min-h-screen user-mode-solo';
+            soloModeBtn.classList.add('active');
+            firmModeBtn.classList.remove('active');
+            updateSuggestions('solo');
+            collapsePowerTools();
+        });
+        
+        firmModeBtn.addEventListener('click', () => {
+            body.className = 'bg-gray-50 min-h-screen user-mode-firm';
+            firmModeBtn.classList.add('active');
+            soloModeBtn.classList.remove('active');
+            updateSuggestions('firm');
+            expandPowerTools();
+        });
+        
+        // Power Tools Toggle
+        function togglePowerTools() {
+            const powerTools = document.querySelector('.power-tools');
+            const toggle = document.getElementById('powerToolsToggle');
+            
+            if (powerTools.classList.contains('power-tools-collapsed')) {
+                expandPowerTools();
+            } else {
+                collapsePowerTools();
+            }
+        }
+        
+        function expandPowerTools() {
+            const powerTools = document.querySelector('.power-tools');
+            const toggle = document.getElementById('powerToolsToggle');
+            powerTools.classList.remove('power-tools-collapsed');
+            powerTools.classList.add('power-tools-expanded');
+            toggle.style.transform = 'rotate(180deg)';
+        }
+        
+        function collapsePowerTools() {
+            const powerTools = document.querySelector('.power-tools');
+            const toggle = document.getElementById('powerToolsToggle');
+            powerTools.classList.remove('power-tools-expanded');
+            powerTools.classList.add('power-tools-collapsed');
+            toggle.style.transform = 'rotate(0deg)';
+        }
+        
+        // Adaptive Suggestions
+        function updateSuggestions(mode) {
+            const suggestionText = document.getElementById('suggestionText');
+            
+            if (mode === 'solo') {
+                suggestionText.textContent = 'Based on your document types, I recommend using OpenRouter with Llama-3.3 for best accuracy at ~$0.002 per page. This will cost about $0.006 for your 3 documents.';
+            } else {
+                suggestionText.textContent = 'For your firm\'s workflow, I suggest creating a template for contract reviews. This could save you ~15 minutes per case and ensure consistent extraction across all team members.';
+            }
+        }
+        
+        // File Upload Handling
+        const fileDropZone = document.querySelector('.file-drop-zone');
+        const fileInput = document.getElementById('fileInput');
+        
+        fileDropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            fileDropZone.classList.add('dragover');
+        });
+        
+        fileDropZone.addEventListener('dragleave', () => {
+            fileDropZone.classList.remove('dragover');
+        });
+        
+        fileDropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            fileDropZone.classList.remove('dragover');
+            handleFiles(e.dataTransfer.files);
+        });
+        
+        fileInput.addEventListener('change', (e) => {
+            handleFiles(e.target.files);
+        });
+        
+        function handleFiles(files) {
+            if (files.length > 0) {
+                // Auto-expand power tools for bulk uploads
+                if (files.length >= 5) {
+                    expandPowerTools();
+                    firmModeBtn.click(); // Switch to firm mode for bulk operations
+                }
+                
+                // Update UI to show selected files
+                fileDropZone.innerHTML = `
+                    <div class="text-green-600 mb-2">✅ ${files.length} files selected</div>
+                    <div class="text-sm text-gray-600">Ready to process</div>
+                    <button class="mt-3 bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700">Start Processing</button>
+                `;
+            }
+        }
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            updateSuggestions('solo');
+        });
+    </script>
+</body>
+</html>

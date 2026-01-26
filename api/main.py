@@ -36,6 +36,45 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
+# ============================================================================
+# Authorization Helpers
+# ============================================================================
+
+async def authorize_run_access(run_id: int, db: Session, user: User) -> Run:
+    """
+    Verify user can access a run, return run or raise 403/404.
+
+    Authorization rules:
+    - Admin users can access any run
+    - Non-admin users must be assigned to the run's case via CaseAssignment
+
+    Args:
+        run_id: The run ID to authorize access for
+        db: Database session
+        user: Current authenticated user
+
+    Returns:
+        Run object if authorized
+
+    Raises:
+        HTTPException 404: If run not found
+        HTTPException 403: If user not authorized to access the run
+    """
+    run = db.query(Run).filter(Run.id == run_id).first()
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    if user.role != UserRole.ADMIN:
+        assignment = db.query(CaseAssignment).filter(
+            CaseAssignment.case_id == run.case_id,
+            CaseAssignment.user_id == user.id
+        ).first()
+        if not assignment:
+            raise HTTPException(status_code=403, detail="Access denied to this run")
+
+    return run
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
@@ -594,7 +633,11 @@ async def create_client(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_auth)  # Enforce authentication
 ):
-    """Create a new client organization"""
+    """Create a new client organization
+
+    Note: A default 'General' case is auto-created and the creator is assigned to it.
+    This ensures the creator can immediately access the new client.
+    """
     db_client = Client(
         name=client.name,
         reference_code=client.reference_code,
@@ -604,8 +647,27 @@ async def create_client(
     db.commit()
     db.refresh(db_client)
 
+    # Auto-create a default "General" case for the new client
+    default_case = Case(
+        client_id=db_client.id,
+        name="General",
+        description="Default case for general documents"
+    )
+    db.add(default_case)
+    db.commit()
+    db.refresh(default_case)
+
+    # Auto-assign the creator to the default case with 'lead' role
+    assignment = CaseAssignment(
+        case_id=default_case.id,
+        user_id=current_user.id,
+        role_in_case="lead"
+    )
+    db.add(assignment)
+    db.commit()
+
     # current_user is now guaranteed by require_auth dependency
-    logger.info(f"Created client: {db_client.name} (ID: {db_client.id}) by user {current_user.email}")
+    logger.info(f"Created client: {db_client.name} (ID: {db_client.id}) by user {current_user.email} (with default case)")
     return db_client
 
 
@@ -613,27 +675,70 @@ async def create_client(
 async def list_clients(
     skip: int = Query(default=0, ge=0, description="Number of records to skip"),
     limit: int = Query(default=100, ge=1, le=1000, description="Maximum number of records to return"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_auth)
 ):
-    """List all clients with pagination validation
+    """List clients the user has access to (via case assignments)
+
+    Security: Only returns clients that have cases assigned to the current user.
+    Admin users see all clients.
 
     Pagination limits:
     - skip: Must be >= 0
     - limit: Must be between 1 and 1000
     """
-    clients = db.query(Client).offset(skip).limit(limit).all()
+    from sqlalchemy import distinct
+
+    # Admin users can see all clients
+    if current_user.role == UserRole.ADMIN:
+        clients = db.query(Client).offset(skip).limit(limit).all()
+        return clients
+
+    # Non-admin users: filter to clients with cases they're assigned to
+    # Get distinct client_ids from cases the user is assigned to
+    accessible_client_ids = db.query(distinct(Case.client_id)).join(
+        CaseAssignment, CaseAssignment.case_id == Case.id
+    ).filter(
+        CaseAssignment.user_id == current_user.id
+    ).subquery()
+
+    clients = db.query(Client).filter(
+        Client.id.in_(accessible_client_ids)
+    ).offset(skip).limit(limit).all()
+
     return clients
 
 
 @app.get("/v1/clients/{client_id}", response_model=ClientResponse)
 async def get_client(
     client_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_auth)
 ):
-    """Get client details"""
+    """Get client details
+
+    Security: Only returns the client if the user has access to at least one
+    case belonging to this client, or if the user is an admin.
+    """
+    from sqlalchemy import distinct
+
     client = db.query(Client).filter(Client.id == client_id).first()
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
+
+    # Admin users can access any client
+    if current_user.role != UserRole.ADMIN:
+        # Check if user is assigned to any case belonging to this client
+        has_access = db.query(CaseAssignment.id).join(
+            Case, CaseAssignment.case_id == Case.id
+        ).filter(
+            Case.client_id == client_id,
+            CaseAssignment.user_id == current_user.id
+        ).first()
+
+        if not has_access:
+            raise HTTPException(status_code=403, detail="Access denied to this client")
+
     return client
 
 
@@ -647,7 +752,10 @@ async def create_case(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_auth)  # Enforce authentication
 ):
-    """Create a new case"""
+    """Create a new case
+
+    Note: The creator is automatically assigned to the case with 'lead' role.
+    """
     # Validate client exists
     client = db.query(Client).filter(Client.id == case.client_id).first()
     if not client:
@@ -663,19 +771,72 @@ async def create_case(
     db.commit()
     db.refresh(db_case)
 
+    # Auto-assign the creator to the case with 'lead' role
+    assignment = CaseAssignment(
+        case_id=db_case.id,
+        user_id=current_user.id,
+        role_in_case="lead"
+    )
+    db.add(assignment)
+    db.commit()
+
     # current_user is now guaranteed by require_auth dependency
-    logger.info(f"Created case: {db_case.name} (ID: {db_case.id}) by user {current_user.email}")
+    logger.info(f"Created case: {db_case.name} (ID: {db_case.id}) by user {current_user.email} (auto-assigned as lead)")
     return db_case
 
 
 @app.get("/v1/clients/{client_id}/cases", response_model=List[CaseResponse])
 async def list_client_cases(
     client_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_auth)
 ):
-    """List all cases for a client"""
-    cases = db.query(Case).filter(Case.client_id == client_id).all()
+    """List cases for a client that the user has access to
+
+    Security: Only returns cases the current user is assigned to.
+    Admin users see all cases for the client.
+    """
+    # Admin users can see all cases
+    if current_user.role == UserRole.ADMIN:
+        cases = db.query(Case).filter(Case.client_id == client_id).all()
+        return cases
+
+    # Non-admin users: filter to cases they're assigned to
+    cases = db.query(Case).join(
+        CaseAssignment, CaseAssignment.case_id == Case.id
+    ).filter(
+        Case.client_id == client_id,
+        CaseAssignment.user_id == current_user.id
+    ).all()
+
     return cases
+
+
+@app.get("/v1/cases/{case_id}", response_model=CaseResponse)
+async def get_case(
+    case_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_auth)
+):
+    """Get case details
+
+    Security: Only returns the case if the user is assigned to it or is an admin.
+    """
+    case = db.query(Case).filter(Case.id == case_id).first()
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    # Admin users can access any case
+    if current_user.role != UserRole.ADMIN:
+        # Check if user is assigned to this case
+        assignment = db.query(CaseAssignment).filter(
+            CaseAssignment.case_id == case_id,
+            CaseAssignment.user_id == current_user.id
+        ).first()
+        if not assignment:
+            raise HTTPException(status_code=403, detail="Access denied to this case")
+
+    return case
 
 
 @app.post("/v1/cases/{case_id}/assign")
@@ -966,10 +1127,14 @@ async def list_runs(
     offset: int = Query(0, ge=0, description="Number of results to skip for pagination"),
     order_by: str = Query("created_at", description="Field to sort by (created_at, finished_at, status)"),
     order: str = Query("desc", description="Sort direction (asc or desc)"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_auth)
 ):
     """
     List runs with filtering and pagination.
+
+    Security: Only returns runs for cases the current user is assigned to.
+    Admin users see all runs.
 
     This endpoint provides efficient access to runs without the N+1 query problem
     of fetching clients → cases → runs separately.
@@ -992,7 +1157,15 @@ async def list_runs(
     # Build query with filters
     query = db.query(Run)
 
-    # Apply filters
+    # Security: Filter by user's accessible cases (unless admin)
+    if current_user.role != UserRole.ADMIN:
+        # Get case IDs the user is assigned to
+        accessible_case_ids = db.query(CaseAssignment.case_id).filter(
+            CaseAssignment.user_id == current_user.id
+        ).subquery()
+        query = query.filter(Run.case_id.in_(accessible_case_ids))
+
+    # Apply additional filters
     if case_id is not None:
         query = query.filter(Run.case_id == case_id)
     elif client_id is not None:
@@ -1252,12 +1425,14 @@ async def start_run(
 @app.get("/v1/runs/{run_id}", response_model=RunResponse)
 async def get_run(
     run_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_auth)
 ):
-    """Get run details with progress information"""
-    run = db.query(Run).filter(Run.id == run_id).first()
-    if not run:
-        raise HTTPException(status_code=404, detail="Run not found")
+    """Get run details with progress information
+
+    Security: Only returns run if user is assigned to the run's case or is admin.
+    """
+    run = await authorize_run_access(run_id, db, current_user)
     
     # Get document counts
     total_docs = db.query(Document).filter(Document.run_id == run_id).count()
@@ -1300,14 +1475,20 @@ async def get_run_events(
     run_id: int,
     cursor: Optional[int] = Query(default=None, ge=0, description="Cursor for pagination (event ID)"),
     limit: int = Query(default=100, ge=1, le=1000, description="Maximum number of events to return"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_auth)
 ):
     """Get events extracted in a run (paginated)
+
+    Security: Only returns events if user is assigned to the run's case or is admin.
 
     Pagination limits:
     - cursor: Must be >= 0 if provided
     - limit: Must be between 1 and 1000
     """
+    # Authorize access to the run
+    await authorize_run_access(run_id, db, current_user)
+
     query = db.query(Event).filter(Event.run_id == run_id)
 
     if cursor is not None:
@@ -1338,14 +1519,18 @@ async def get_run_events(
 
 
 @app.get("/v1/runs/{run_id}/classification")
-async def get_run_classification(run_id: int, db: Session = Depends(get_db)):
+async def get_run_classification(
+    run_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_auth)
+):
     """
     Return per-document classification results if available.
     Reads artifact 'classification_json' from storage if present.
+
+    Security: Only returns classification if user is assigned to the run's case or is admin.
     """
-    run = db.query(Run).filter(Run.id == run_id).first()
-    if not run:
-        raise HTTPException(status_code=404, detail="Run not found")
+    run = await authorize_run_access(run_id, db, current_user)
 
     artifact = db.query(Artifact).filter(
         Artifact.run_id == run_id,
@@ -1368,14 +1553,18 @@ async def get_run_classification(run_id: int, db: Session = Depends(get_db)):
 
 
 @app.get("/v1/runs/{run_id}/token-usage")
-async def get_run_token_usage(run_id: int, db: Session = Depends(get_db)):
+async def get_run_token_usage(
+    run_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_auth)
+):
     """
     Return per-document token usage and totals if available.
     Reads artifact 'token_usage_json' from storage if present.
+
+    Security: Only returns token usage if user is assigned to the run's case or is admin.
     """
-    run = db.query(Run).filter(Run.id == run_id).first()
-    if not run:
-        raise HTTPException(status_code=404, detail="Run not found")
+    run = await authorize_run_access(run_id, db, current_user)
 
     artifact = db.query(Artifact).filter(
         Artifact.run_id == run_id,
@@ -1400,9 +1589,16 @@ async def get_run_token_usage(run_id: int, db: Session = Depends(get_db)):
 @app.get("/v1/runs/{run_id}/artifacts")
 async def get_run_artifacts(
     run_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_auth)
 ):
-    """Get available export artifacts for a run"""
+    """Get available export artifacts for a run
+
+    Security: Only returns artifacts if user is assigned to the run's case or is admin.
+    """
+    # Authorize access to the run
+    await authorize_run_access(run_id, db, current_user)
+
     artifacts = db.query(Artifact).filter(Artifact.run_id == run_id).all()
     
     storage = MinioStorage()
@@ -1568,9 +1764,16 @@ async def retry_run(
 async def export_run(
     run_id: int,
     fmt: str = "csv",
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_auth)
 ):
-    """Generate and return export file"""
+    """Generate and return export file
+
+    Security: Only allows export if user is assigned to the run's case or is admin.
+    """
+    # Authorize access to the run first
+    await authorize_run_access(run_id, db, current_user)
+
     if fmt not in ["csv", "xlsx", "json"]:
         raise HTTPException(status_code=400, detail="Format must be csv, xlsx, or json")
     
@@ -1768,19 +1971,26 @@ async def delete_artifact(
 
 @app.get("/v1/runs/{run_id}/stream")
 async def stream_run_progress(
-    run_id: int
+    run_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_auth)
 ):
     """
     Server-Sent Events endpoint for real-time progress updates
 
+    Security: Only streams progress if user is assigned to the run's case or is admin.
+
     Note: Proper DB session management for long-lived SSE connections.
     Each loop iteration gets a fresh db session to avoid connection lifecycle issues.
-    
+
     Safety Features:
     - Maximum iterations: 1800 (1 hour at 2s intervals)
     - Timeout protection prevents infinite loops
     - Graceful termination on completion or error
     """
+    # Authorize access before starting stream (uses request-scoped db session)
+    await authorize_run_access(run_id, db, current_user)
+
     from sse_starlette.sse import EventSourceResponse
     import asyncio
     import json

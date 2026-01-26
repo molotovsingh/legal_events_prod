@@ -3,200 +3,539 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Legal Events - Simple Interface</title>
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' http://localhost:8000 http://localhost:3001 http://127.0.0.1:8000 http://127.0.0.1:3001 https://unpkg.com https://cdn.jsdelivr.net; script-src 'self' https://cdn.tailwindcss.com https://unpkg.com https://cdn.jsdelivr.net; style-src 'self' https://cdn.tailwindcss.com; font-src 'self' data: https://r2cdn.perplexity.ai;">
+    <title>Legal Events Extraction</title>
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' http://localhost:8000 http://localhost:3001 http://127.0.0.1:8000 http://127.0.0.1:3001 https://unpkg.com https://cdn.jsdelivr.net; script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://unpkg.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; font-src 'self' data:;">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
     <script src="config.js?v=1763012002"></script>
-    <script src="simple.js?v=1763012002" defer></script>
-    <script>
-        // Move inline handlers to external script to satisfy CSP
-        document.addEventListener('DOMContentLoaded', function() {
-            document.getElementById('cancelLoginBtn').addEventListener('click', hideLoginModal);
-            document.getElementById('loginBtn').addEventListener('click', handleLogin);
-        });
-    </script>
     <style>
-        .section { border: 1px solid #e5e7eb; border-radius: 4px; padding: 16px; margin-bottom: 12px; background: white; }
-        .section.disabled { opacity: 0.5; pointer-events: none; }
-        .section.collapsed { padding: 8px 16px; }
-        .section.collapsed .section-body { display: none; }
-        .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
-        .section.collapsed .section-header { margin-bottom: 0; }
-        .status-badge { display: inline-block; padding: 2px 8px; border-radius: 3px; font-size: 11px; font-weight: 600; }
-        .status-pending { background: #fef3c7; color: #92400e; }
-        .status-success { background: #d1fae5; color: #065f46; }
-        .status-error { background: #fee2e2; color: #991b1b; }
-        .status-processing { background: #dbeafe; color: #1e40af; }
-        input, select, button { font-size: 14px; }
-        .compact-input { padding: 6px 10px; border: 1px solid #d1d5db; border-radius: 3px; width: 100%; }
-        .compact-btn { padding: 6px 12px; border-radius: 3px; font-weight: 500; cursor: pointer; border: none; }
-        .btn-primary { background: #3b82f6; color: white; }
-        .btn-primary:hover { background: #2563eb; }
-        .btn-success { background: #10b981; color: white; }
-        .btn-success:hover { background: #059669; }
-        .btn-secondary { background: #6b7280; color: white; }
-        .btn-secondary:hover { background: #4b5563; }
-        .btn-link { background: none; color: #3b82f6; padding: 0; text-decoration: underline; }
-        .field-group { margin-bottom: 10px; }
-        .field-label { font-size: 12px; font-weight: 500; color: #374151; margin-bottom: 4px; }
-        .field-hint { font-size: 11px; color: #6b7280; margin-top: 2px; }
-        .inline-status { font-size: 12px; margin-top: 4px; }
-        .spinner { border: 2px solid #f3f4f6; border-top: 2px solid #3b82f6; border-radius: 50%; width: 16px; height: 16px; animation: spin 0.8s linear infinite; display: inline-block; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-        .hidden { display: none; }
+        /* Step indicator styles */
+        .step-indicator {
+            transition: all 0.3s ease;
+        }
+        .step-active {
+            background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+        }
+        .step-completed {
+            background: #10b981;
+        }
+        .step-pending {
+            background: #e5e7eb;
+        }
+
+        /* File drop zone */
+        .file-drop-zone {
+            border: 2px dashed #cbd5e1;
+            transition: all 0.3s ease;
+        }
+        .file-drop-zone:hover {
+            border-color: #3b82f6;
+            background: #f0f9ff;
+        }
+        .file-drop-zone.dragover {
+            border-color: #1d4ed8;
+            background: #dbeafe;
+            transform: scale(1.01);
+        }
+
+        /* Smart settings gradient */
+        .smart-setting {
+            background: linear-gradient(135deg, #f0f9ff, #e0f2fe);
+            border: 1px solid #0ea5e9;
+        }
+        .smart-setting:hover {
+            background: linear-gradient(135deg, #e0f2fe, #bae6fd);
+        }
+
+        /* Section card */
+        .section-card {
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
+            transition: all 0.2s ease;
+        }
+        .section-card:hover {
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+        }
+
+        /* File item */
+        .file-item {
+            transition: all 0.2s ease;
+        }
+        .file-item:hover {
+            background: #f8fafc;
+        }
+        .file-item .remove-btn {
+            opacity: 0;
+            transition: opacity 0.2s ease;
+        }
+        .file-item:hover .remove-btn {
+            opacity: 1;
+        }
+
+        /* Recent work item */
+        .recent-item {
+            transition: all 0.2s ease;
+        }
+        .recent-item:hover {
+            background: #f8fafc;
+            transform: translateX(4px);
+        }
+
+        /* Animations */
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        .slide-in {
+            animation: slideIn 0.4s ease-out forwards;
+        }
+        .fade-in {
+            animation: fadeIn 0.3s ease-out forwards;
+        }
+
+        /* Spinner */
+        .spinner {
+            border: 2px solid #e5e7eb;
+            border-top: 2px solid #3b82f6;
+            border-radius: 50%;
+            width: 16px;
+            height: 16px;
+            animation: spin 0.8s linear infinite;
+            display: inline-block;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Button styles */
+        .btn-primary {
+            background: linear-gradient(135deg, #3b82f6, #2563eb);
+            color: white;
+            transition: all 0.2s ease;
+        }
+        .btn-primary:hover {
+            background: linear-gradient(135deg, #2563eb, #1d4ed8);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+        }
+        .btn-primary:disabled {
+            background: #94a3b8;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        .btn-success {
+            background: linear-gradient(135deg, #10b981, #059669);
+            color: white;
+            transition: all 0.2s ease;
+        }
+        .btn-success:hover {
+            background: linear-gradient(135deg, #059669, #047857);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+        }
+        .btn-success:disabled {
+            background: #94a3b8;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        /* Status badges */
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 2px 8px;
+            border-radius: 9999px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        .badge-blue { background: #dbeafe; color: #1e40af; }
+        .badge-green { background: #d1fae5; color: #065f46; }
+        .badge-yellow { background: #fef3c7; color: #92400e; }
+        .badge-red { background: #fee2e2; color: #991b1b; }
+
+        /* Progress bar animation */
+        .progress-bar {
+            transition: width 0.5s ease-out;
+        }
+
+        /* Hide scrollbar for cleaner look */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
     </style>
 </head>
-<body class="bg-gray-50 p-4">
+<body class="bg-gray-50 min-h-screen">
     <!-- Login Modal -->
-    <div id="loginModal" class="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center hidden z-50">
-        <div class="bg-white rounded p-6 w-80 shadow-lg">
-            <h3 class="font-semibold mb-4">Login</h3>
-            <div class="field-group">
-                <input type="email" id="loginEmail" placeholder="Email" class="compact-input">
+    <div id="loginModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50 fade-in">
+        <div class="bg-white rounded-xl p-6 w-96 shadow-2xl slide-in">
+            <div class="flex items-center mb-4">
+                <div class="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center mr-3">
+                    <span class="text-xl">🔐</span>
+                </div>
+                <h3 class="text-lg font-semibold text-gray-900">Sign In</h3>
             </div>
-            <div class="field-group">
-                <input type="password" id="loginPassword" placeholder="Password" class="compact-input">
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                    <input type="email" id="loginEmail" placeholder="you@example.com"
+                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                    <input type="password" id="loginPassword" placeholder="••••••••"
+                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition">
+                </div>
+                <div id="loginError" class="text-red-600 text-sm hidden"></div>
             </div>
-            <div id="loginError" class="text-red-600 text-xs mb-3 hidden"></div>
-            <div class="flex justify-end space-x-2">
-                <button id="cancelLoginBtn" class="compact-btn btn-secondary">Cancel</button>
-                <button id="loginBtn" class="compact-btn btn-primary">Login</button>
+            <div class="flex justify-end space-x-3 mt-6">
+                <button id="cancelLoginBtn" class="px-4 py-2 text-gray-600 hover:text-gray-800 font-medium transition">Cancel</button>
+                <button id="loginBtn" class="px-6 py-2 btn-primary rounded-lg font-medium">Sign In</button>
             </div>
         </div>
     </div>
 
-    <div class="max-w-3xl mx-auto">
-        <!-- Header -->
-        <div class="flex justify-between items-center mb-4">
-            <h1 class="text-2xl font-bold text-gray-800">Legal Events Extraction</h1>
-            <div class="flex items-center space-x-3">
-                <span id="apiBadge" class="text-xs"></span>
-                <a href="index.html" class="text-sm text-blue-600 hover:underline">Full Interface</a>
-                <div id="authSection" class="text-sm"></div>
+    <!-- Header -->
+    <header class="bg-white border-b border-gray-200 sticky top-0 z-40">
+        <div class="max-w-4xl mx-auto px-4 py-4">
+            <div class="flex justify-between items-center">
+                <div class="flex items-center space-x-3">
+                    <div class="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-700 rounded-lg flex items-center justify-center">
+                        <span class="text-white text-sm font-bold">LE</span>
+                    </div>
+                    <h1 class="text-xl font-semibold text-gray-900">Legal Events</h1>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <span id="apiBadge" class="badge badge-green text-xs"></span>
+                    <a href="index.html" class="text-sm text-gray-500 hover:text-gray-700">Full Interface</a>
+                    <div id="authSection"></div>
+                </div>
             </div>
         </div>
+    </header>
 
-        <!-- Main Content -->
-        <div id="mainContent">
-            <!-- Settings Section -->
-            <div class="section" id="settingsSection">
-                <div class="section-header">
-                    <h2 class="font-semibold text-sm">Settings</h2>
-                    <button onclick="toggleSection('settingsSection')" class="text-xs text-gray-500 hover:text-gray-700">Collapse</button>
+    <!-- Progress Bar -->
+    <div id="progressHeader" class="bg-white border-b border-gray-200">
+        <div class="max-w-4xl mx-auto px-4 py-3">
+            <div class="flex items-center justify-between mb-2">
+                <span id="stepLabel" class="text-sm font-medium text-gray-700">Step 1 of 3: Select Documents</span>
+                <span id="stepPercent" class="text-sm text-gray-500">0%</span>
+            </div>
+            <div class="flex space-x-2">
+                <div id="step1" class="step-indicator step-active flex-1 h-2 rounded-full"></div>
+                <div id="step2" class="step-indicator step-pending flex-1 h-2 rounded-full"></div>
+                <div id="step3" class="step-indicator step-pending flex-1 h-2 rounded-full"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <main class="max-w-4xl mx-auto px-4 py-6 space-y-6">
+
+        <!-- Documents Section -->
+        <section class="section-card p-6 slide-in" style="animation-delay: 0s">
+            <div class="flex items-center justify-between mb-4">
+                <div class="flex items-center">
+                    <div class="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center mr-3">
+                        <span class="text-xl">📄</span>
+                    </div>
+                    <div>
+                        <h2 class="text-lg font-semibold text-gray-900">Documents</h2>
+                        <p id="fileCountLabel" class="text-sm text-gray-500">No files selected</p>
+                    </div>
                 </div>
-                <div class="section-body">
-                    <div class="grid-2 mb-3">
-                        <div class="field-group">
-                            <div class="field-label">Document Parser</div>
-                            <select id="docExtractorSelect" class="compact-input">
-                                <option value="docling">Docling (Free)</option>
-                                <option value="qwen_vl">Qwen3-VL ($0.077/15pg)</option>
-                            </select>
-                        </div>
-                        <div class="field-group">
-                            <div class="field-label">Event Extractor</div>
-                            <select id="providerSelect" class="compact-input">
+                <span id="fileBadge" class="badge badge-blue hidden">0 files</span>
+            </div>
+
+            <!-- File List -->
+            <div id="fileList" class="space-y-2 mb-4 max-h-48 overflow-y-auto no-scrollbar">
+                <!-- Files will be inserted here dynamically -->
+            </div>
+
+            <!-- Drop Zone -->
+            <div id="dropZone" class="file-drop-zone p-8 rounded-xl text-center">
+                <div class="text-blue-500 text-2xl mb-2">📁</div>
+                <div class="text-blue-600 font-medium mb-2">Drop files or folders here</div>
+                <div class="flex justify-center space-x-3 mb-3">
+                    <button id="selectFilesBtn" type="button" class="px-4 py-2 bg-blue-100 text-blue-700 rounded-lg text-sm font-medium hover:bg-blue-200 transition">
+                        📄 Select Files
+                    </button>
+                    <button id="selectFolderBtn" type="button" class="px-4 py-2 bg-purple-100 text-purple-700 rounded-lg text-sm font-medium hover:bg-purple-200 transition">
+                        📁 Select Folder
+                    </button>
+                </div>
+                <div class="text-xs text-gray-500">Supports PDF, DOC, DOCX, TXT, EML, RTF</div>
+                <input type="file" id="fileInput" multiple accept=".pdf,.txt,.doc,.docx,.eml,.rtf" class="hidden">
+                <input type="file" id="folderInput" webkitdirectory multiple class="hidden">
+            </div>
+        </section>
+
+        <!-- Smart Settings Section -->
+        <section class="section-card p-6 slide-in" style="animation-delay: 0.1s">
+            <div class="flex items-center mb-4">
+                <div class="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center mr-3">
+                    <span class="text-xl">⚡</span>
+                </div>
+                <div>
+                    <h2 class="text-lg font-semibold text-gray-900">Smart Settings</h2>
+                    <p class="text-sm text-gray-500">Recommended configuration for best results</p>
+                </div>
+                <span class="badge badge-green ml-3">Recommended</span>
+            </div>
+
+            <div class="space-y-3">
+                <!-- Provider Setting -->
+                <label class="smart-setting p-4 rounded-xl cursor-pointer flex items-start">
+                    <input type="checkbox" id="useSmartProvider" checked class="mt-1 mr-4 w-4 h-4 text-blue-600 rounded focus:ring-blue-500">
+                    <div class="flex-1">
+                        <div class="font-medium text-sm text-gray-900">OpenRouter + Llama-3.3-70B</div>
+                        <div class="text-xs text-gray-600">Best accuracy for legal documents • ~$0.002 per page</div>
+                    </div>
+                </label>
+
+                <!-- OCR Setting -->
+                <label class="smart-setting p-4 rounded-xl cursor-pointer flex items-start">
+                    <input type="checkbox" id="useLocalOCR" checked class="mt-1 mr-4 w-4 h-4 text-blue-600 rounded focus:ring-blue-500">
+                    <div class="flex-1">
+                        <div class="font-medium text-sm text-gray-900">Local OCR (Docling)</div>
+                        <div class="text-xs text-gray-600">Free processing for clear scans and native PDFs</div>
+                    </div>
+                </label>
+
+                <!-- Classification Setting -->
+                <label class="smart-setting p-4 rounded-xl cursor-pointer flex items-start">
+                    <input type="checkbox" id="enableClassification" class="mt-1 mr-4 w-4 h-4 text-blue-600 rounded focus:ring-blue-500">
+                    <div class="flex-1">
+                        <div class="font-medium text-sm text-gray-900">Classify documents before extraction</div>
+                        <div class="text-xs text-gray-600">Auto-detect document type for better accuracy • +$0.001 per page</div>
+                    </div>
+                </label>
+            </div>
+
+            <!-- Advanced Settings Toggle -->
+            <div class="mt-4 pt-4 border-t border-gray-100">
+                <button id="toggleAdvanced" class="text-blue-600 hover:text-blue-700 text-sm font-medium flex items-center">
+                    <span id="advancedIcon">▶</span>
+                    <span class="ml-2">Advanced Settings</span>
+                </button>
+                <div id="advancedSettings" class="hidden mt-4 space-y-4">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Provider</label>
+                            <select id="providerSelect" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent">
                                 <!-- Populated dynamically -->
                             </select>
                         </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Model</label>
+                            <select id="modelSelect" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                                <option value="">Select provider first</option>
+                            </select>
+                        </div>
                     </div>
-                    <div class="field-group">
-                        <div class="field-label">Model</div>
-                        <select id="modelSelect" class="compact-input">
-                            <option value="">Select provider first</option>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Document Parser</label>
+                        <select id="docExtractorSelect" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                            <option value="docling">Docling (Free - Local OCR)</option>
+                            <option value="qwen_vl">Qwen3-VL ($0.077 per 15 pages - Vision AI)</option>
                         </select>
                     </div>
                 </div>
             </div>
 
-            <!-- Quick Start Section -->
-            <div class="section" id="quickStartSection">
-                <div class="section-header">
-                    <h2 class="font-semibold text-sm">Quick Start</h2>
-                    <span id="quickStartBadge" class="status-badge status-pending">Not Ready</span>
+            <!-- Cost Estimate -->
+            <div id="costEstimate" class="mt-4 pt-4 border-t border-gray-100 hidden">
+                <div class="flex items-center justify-between">
+                    <div class="text-sm text-gray-600">
+                        <span class="font-medium">Estimated cost:</span>
+                        <span id="costValue" class="text-gray-900 font-semibold ml-1">$0.00</span>
+                    </div>
+                    <div class="text-sm text-gray-500">
+                        <span id="tokenCount">0 tokens</span>
+                    </div>
                 </div>
-                <div class="section-body">
-                    <p class="text-xs text-gray-600 mb-3">Use existing client/case to process documents immediately</p>
-                    <div class="grid-2 mb-3">
-                        <div class="field-group">
-                            <div class="field-label">Client ID</div>
-                            <input type="text" id="quickClientId" placeholder="Auto-populated" class="compact-input" readonly>
-                        </div>
-                        <div class="field-group">
-                            <div class="field-label">Case ID</div>
-                            <input type="text" id="quickCaseId" placeholder="Auto-populated" class="compact-input" readonly>
-                        </div>
-                    </div>
-                    <div class="field-group">
-                        <input type="file" id="quickFileInput" multiple accept=".pdf,.txt,.doc,.docx" class="compact-input">
-                    </div>
-                    <button id="quickStartBtn" onclick="quickStartRun()" class="compact-btn btn-success w-full" disabled>
-                        Process Documents
-                    </button>
-                    <div id="quickStartStatus" class="inline-status"></div>
+            </div>
+        </section>
+
+        <!-- Case Assignment Section -->
+        <section class="section-card p-6 slide-in" style="animation-delay: 0.2s">
+            <div class="flex items-center mb-4">
+                <div class="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center mr-3">
+                    <span class="text-xl">📋</span>
+                </div>
+                <div>
+                    <h2 class="text-lg font-semibold text-gray-900">Case Assignment</h2>
+                    <p class="text-sm text-gray-500">Select where to save extracted events</p>
                 </div>
             </div>
 
-            <!-- Setup Section (Collapsed by default) -->
-            <div class="section" id="setupSection">
-                <div class="section-header">
-                    <h2 class="font-semibold text-sm">New Client/Case Setup</h2>
-                    <button onclick="toggleSection('setupSection')" class="text-xs text-gray-500 hover:text-gray-700">Expand</button>
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Client</label>
+                    <select id="quickClientSelect" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                        <option value="">Select client...</option>
+                    </select>
                 </div>
-                <div class="section-body hidden">
-                    <!-- Create Client -->
-                    <div class="field-group">
-                        <div class="field-label">Client Name</div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Case</label>
+                    <select id="quickCaseSelect" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent" disabled>
+                        <option value="">Select client first...</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- New Client/Case Toggle -->
+            <div class="mt-4 pt-4 border-t border-gray-100">
+                <button id="toggleNewCase" class="text-blue-600 hover:text-blue-700 text-sm font-medium flex items-center">
+                    <span id="newCaseIcon">▶</span>
+                    <span class="ml-2">Create New Client or Case</span>
+                </button>
+                <div id="newCaseSection" class="hidden mt-4 space-y-4">
+                    <div class="bg-gray-50 rounded-lg p-4">
+                        <h4 class="text-sm font-medium text-gray-700 mb-3">New Client</h4>
                         <div class="flex space-x-2">
-                            <input type="text" id="clientName" placeholder="e.g., Acme Corp" class="compact-input">
-                            <button onclick="createClient()" class="compact-btn btn-primary">Create</button>
+                            <input type="text" id="clientName" placeholder="Client name"
+                                   class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                            <button id="createClientBtn" class="px-4 py-2 btn-primary rounded-lg text-sm font-medium">Create</button>
                         </div>
-                        <div id="clientStatus" class="inline-status"></div>
+                        <div id="clientStatus" class="text-sm mt-2"></div>
                     </div>
-
-                    <!-- Create Case -->
-                    <div class="field-group">
-                        <div class="field-label">Case Name</div>
-                        <div class="grid-2">
-                            <input type="text" id="clientIdForCase" placeholder="Client ID" class="compact-input" readonly>
-                            <input type="text" id="caseName" placeholder="e.g., Contract Dispute 2024" class="compact-input">
+                    <div class="bg-gray-50 rounded-lg p-4">
+                        <h4 class="text-sm font-medium text-gray-700 mb-3">New Case</h4>
+                        <div class="flex space-x-2">
+                            <input type="text" id="caseName" placeholder="Case name"
+                                   class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                            <button id="createCaseBtn" class="px-4 py-2 btn-primary rounded-lg text-sm font-medium">Create</button>
                         </div>
-                        <button onclick="createCase()" class="compact-btn btn-primary w-full mt-2">Create Case</button>
-                        <div id="caseStatus" class="inline-status"></div>
-                    </div>
-
-                    <!-- Upload Documents -->
-                    <div class="field-group">
-                        <div class="field-label">Upload Documents</div>
-                        <input type="text" id="caseIdForRun" placeholder="Case ID" class="compact-input mb-2" readonly>
-                        <input type="file" id="fileInput" multiple accept=".pdf,.txt,.doc,.docx" class="compact-input mb-2">
-                        <button onclick="startRun()" class="compact-btn btn-success w-full">Start Processing</button>
-                        <div id="uploadStatus" class="inline-status"></div>
+                        <div id="caseStatus" class="text-sm mt-2"></div>
                     </div>
                 </div>
             </div>
+        </section>
 
-            <!-- Results Section -->
-            <div class="section hidden" id="resultsSection">
-                <div class="section-header">
-                    <h2 class="font-semibold text-sm">Processing Results</h2>
-                    <div class="flex items-center space-x-2">
-                        <span id="resultsBadge" class="status-badge status-processing">Processing</span>
-                        <button onclick="refreshResults()" class="text-xs text-gray-500 hover:text-gray-700">Refresh</button>
+        <!-- Action Buttons -->
+        <section class="flex space-x-4 slide-in" style="animation-delay: 0.3s">
+            <button id="estimateCostBtn" class="flex-1 px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                <span class="flex items-center justify-center">
+                    <span class="mr-2">💰</span>
+                    Estimate Cost
+                </span>
+            </button>
+            <button id="startProcessingBtn" class="flex-1 px-6 py-3 btn-success rounded-xl font-medium disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                <span class="flex items-center justify-center">
+                    <span class="mr-2">🚀</span>
+                    Start Processing
+                </span>
+            </button>
+        </section>
+
+        <!-- Processing Status (hidden until processing starts) -->
+        <section id="processingSection" class="section-card p-6 hidden">
+            <div class="flex items-center justify-between mb-4">
+                <div class="flex items-center">
+                    <div class="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center mr-3">
+                        <span class="spinner"></span>
+                    </div>
+                    <div>
+                        <h2 class="text-lg font-semibold text-gray-900">Processing</h2>
+                        <p id="processingStatus" class="text-sm text-gray-500">Starting...</p>
                     </div>
                 </div>
-                <div class="section-body">
-                    <div id="resultsContent"></div>
-                    <div id="exportButtons" class="flex space-x-2 mt-3 hidden">
-                        <button onclick="exportData('csv')" class="compact-btn btn-success">CSV</button>
-                        <button onclick="exportData('xlsx')" class="compact-btn btn-primary">Excel</button>
-                        <button onclick="exportData('json')" class="compact-btn btn-secondary">JSON</button>
-                    </div>
+                <span id="processingBadge" class="badge badge-blue">In Progress</span>
+            </div>
+
+            <!-- Progress Bar -->
+            <div class="mb-4">
+                <div class="flex justify-between text-sm text-gray-600 mb-2">
+                    <span id="processingDocLabel">Processing documents...</span>
+                    <span id="processingPercent">0%</span>
+                </div>
+                <div class="w-full bg-gray-200 rounded-full h-3">
+                    <div id="processingProgressBar" class="progress-bar bg-blue-500 h-3 rounded-full" style="width: 0%"></div>
                 </div>
             </div>
-        </div>
-    </div>
+
+            <!-- Document Status List -->
+            <div id="documentStatusList" class="space-y-2 max-h-48 overflow-y-auto no-scrollbar">
+                <!-- Document statuses will be inserted here -->
+            </div>
+        </section>
+
+        <!-- Results Section (hidden until complete) -->
+        <section id="resultsSection" class="section-card p-6 hidden">
+            <div class="flex items-center justify-between mb-4">
+                <div class="flex items-center">
+                    <div class="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center mr-3">
+                        <span class="text-xl">✅</span>
+                    </div>
+                    <div>
+                        <h2 class="text-lg font-semibold text-gray-900">Results</h2>
+                        <p id="resultsStatus" class="text-sm text-gray-500">Extraction complete</p>
+                    </div>
+                </div>
+                <span id="resultsBadge" class="badge badge-green">Complete</span>
+            </div>
+
+            <div id="resultsContent" class="mb-4">
+                <!-- Results summary will be inserted here -->
+            </div>
+
+            <!-- Export Buttons -->
+            <div class="flex space-x-3">
+                <button onclick="exportData('csv')" class="flex-1 px-4 py-2 bg-green-100 text-green-700 rounded-lg font-medium hover:bg-green-200 transition">
+                    📊 CSV
+                </button>
+                <button onclick="exportData('xlsx')" class="flex-1 px-4 py-2 bg-blue-100 text-blue-700 rounded-lg font-medium hover:bg-blue-200 transition">
+                    📑 Excel
+                </button>
+                <button onclick="exportData('json')" class="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200 transition">
+                    📦 JSON
+                </button>
+            </div>
+        </section>
+
+        <!-- Recent Work Section -->
+        <section class="section-card p-6 slide-in" style="animation-delay: 0.4s">
+            <div class="flex items-center justify-between mb-4">
+                <div class="flex items-center">
+                    <div class="w-10 h-10 bg-yellow-100 rounded-full flex items-center justify-center mr-3">
+                        <span class="text-xl">📜</span>
+                    </div>
+                    <h2 class="text-lg font-semibold text-gray-900">Recent Work</h2>
+                </div>
+                <button id="refreshRecentBtn" class="text-gray-400 hover:text-gray-600 transition">
+                    🔄
+                </button>
+            </div>
+
+            <div id="recentWorkList" class="space-y-2">
+                <div class="text-sm text-gray-500 text-center py-4">Loading recent work...</div>
+            </div>
+        </section>
+
+        <!-- Info Box -->
+        <section class="bg-blue-50 border border-blue-200 rounded-xl p-4 slide-in" style="animation-delay: 0.5s">
+            <div class="flex items-start">
+                <span class="text-blue-600 mr-3 text-lg">ℹ️</span>
+                <div class="text-sm text-blue-800">
+                    <div class="font-medium mb-1">How it works</div>
+                    <div class="text-blue-700">Upload your legal documents, configure settings, and we'll extract all relevant events, deadlines, and parties. Results are available for export in multiple formats.</div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script src="simple.js?v=1763012006" defer></script>
 </body>
 </html>
