@@ -38,13 +38,30 @@
             transform: scale(1.01);
         }
 
-        /* Smart settings gradient */
+        /* Smart settings gradient (legacy - kept for compatibility) */
         .smart-setting {
             background: linear-gradient(135deg, #f0f9ff, #e0f2fe);
             border: 1px solid #0ea5e9;
         }
         .smart-setting:hover {
             background: linear-gradient(135deg, #e0f2fe, #bae6fd);
+        }
+
+        /* Mode card styles */
+        .mode-card {
+            transition: all 0.2s ease;
+            background: white;
+        }
+        .mode-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+        }
+        .mode-card.selected {
+            border-color: #3b82f6;
+            background: #eff6ff;
+        }
+        .mode-card input[type="radio"] {
+            accent-color: #3b82f6;
         }
 
         /* Section card */
@@ -281,80 +298,36 @@
             </div>
         </section>
 
-        <!-- Smart Settings Section -->
+        <!-- Processing Mode Section -->
         <section class="section-card p-6 slide-in" style="animation-delay: 0.1s">
             <div class="flex items-center mb-4">
                 <div class="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center mr-3">
                     <span class="text-xl">⚡</span>
                 </div>
                 <div>
-                    <h2 class="text-lg font-semibold text-gray-900">Smart Settings</h2>
-                    <p class="text-sm text-gray-500">Recommended configuration for best results</p>
+                    <h2 class="text-lg font-semibold text-gray-900">Processing Mode</h2>
+                    <p class="text-sm text-gray-500">Choose how documents should be processed</p>
                 </div>
-                <span class="badge badge-green ml-3">Recommended</span>
             </div>
 
-            <div class="space-y-3">
-                <!-- Provider Setting -->
-                <label class="smart-setting p-4 rounded-xl cursor-pointer flex items-start">
-                    <input type="checkbox" id="useSmartProvider" checked class="mt-1 mr-4 w-4 h-4 text-blue-600 rounded focus:ring-blue-500">
-                    <div class="flex-1">
-                        <div class="font-medium text-sm text-gray-900">OpenRouter + Llama-3.3-70B</div>
-                        <div class="text-xs text-gray-600">Best accuracy for legal documents • ~$0.002 per page</div>
-                    </div>
-                </label>
-
-                <!-- OCR Setting -->
-                <label class="smart-setting p-4 rounded-xl cursor-pointer flex items-start">
-                    <input type="checkbox" id="useLocalOCR" checked class="mt-1 mr-4 w-4 h-4 text-blue-600 rounded focus:ring-blue-500">
-                    <div class="flex-1">
-                        <div class="font-medium text-sm text-gray-900">Local OCR (Docling)</div>
-                        <div class="text-xs text-gray-600">Free processing for clear scans and native PDFs</div>
-                    </div>
-                </label>
-
-                <!-- Classification Setting -->
-                <label class="smart-setting p-4 rounded-xl cursor-pointer flex items-start">
-                    <input type="checkbox" id="enableClassification" class="mt-1 mr-4 w-4 h-4 text-blue-600 rounded focus:ring-blue-500">
-                    <div class="flex-1">
-                        <div class="font-medium text-sm text-gray-900">Classify documents before extraction</div>
-                        <div class="text-xs text-gray-600">Auto-detect document type for better accuracy • +$0.001 per page</div>
-                    </div>
-                </label>
+            <!-- Mode Selector Cards -->
+            <div id="modeSelector" class="space-y-3">
+                <!-- Modes loaded dynamically from /v1/modes -->
+                <div class="text-sm text-gray-500 text-center py-4">Loading processing modes...</div>
             </div>
 
-            <!-- Advanced Settings Toggle -->
+            <!-- Classification Setting (kept for users who want it) -->
             <div class="mt-4 pt-4 border-t border-gray-100">
-                <button id="toggleAdvanced" class="text-blue-600 hover:text-blue-700 text-sm font-medium flex items-center">
-                    <span id="advancedIcon">▶</span>
-                    <span class="ml-2">Advanced Settings</span>
-                </button>
-                <div id="advancedSettings" class="hidden mt-4 space-y-4">
-                    <div class="grid grid-cols-2 gap-4">
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">Provider</label>
-                            <select id="providerSelect" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-                                <!-- Populated dynamically -->
-                            </select>
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">Model</label>
-                            <select id="modelSelect" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-                                <option value="">Select provider first</option>
-                            </select>
-                        </div>
+                <label class="flex items-start cursor-pointer">
+                    <input type="checkbox" id="enableClassification" class="mt-1 mr-3 w-4 h-4 text-blue-600 rounded focus:ring-blue-500">
+                    <div class="flex-1">
+                        <div class="font-medium text-sm text-gray-900">Classify documents first</div>
+                        <div class="text-xs text-gray-600">Auto-detect document type for better accuracy</div>
                     </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Document Parser</label>
-                        <select id="docExtractorSelect" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-                            <option value="docling">Docling (Free - Local OCR)</option>
-                            <option value="qwen_vl">Qwen3-VL ($0.077 per 15 pages - Vision AI)</option>
-                        </select>
-                    </div>
-                </div>
+                </label>
             </div>
 
-            <!-- Cost Estimate -->
+            <!-- Cost Estimate (shown after files selected) -->
             <div id="costEstimate" class="mt-4 pt-4 border-t border-gray-100 hidden">
                 <div class="flex items-center justify-between">
                     <div class="text-sm text-gray-600">

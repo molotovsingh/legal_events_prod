@@ -394,6 +394,74 @@ async def list_providers(
         )
 
 
+@app.get("/v1/modes", response_model=ProcessingModesResponse)
+async def list_processing_modes():
+    """
+    List available processing modes for end users.
+
+    Returns simplified mode options that abstract away provider/model details.
+    Each mode maps to a specific provider/model combination configured on the backend.
+
+    This is the user-facing API - it hides technical details like provider names
+    and model IDs, presenting simple choices like "Best Quality", "Balanced", "Fast".
+
+    Returns:
+        modes: List of available modes with name, description, icon
+        default: ID of the recommended default mode
+        timestamp: ISO 8601 timestamp
+    """
+    from core.modes import list_modes, DEFAULT_MODE_ID
+
+    modes = list_modes()
+
+    return {
+        "modes": [
+            {
+                "id": mode.id,
+                "name": mode.name,
+                "description": mode.description,
+                "icon": mode.icon,
+                "estimated_speed": mode.estimated_speed
+            }
+            for mode in modes
+        ],
+        "default": DEFAULT_MODE_ID,
+        "timestamp": datetime.utcnow().isoformat()
+    }
+
+
+@app.get("/v1/modes/{mode_id}", response_model=ProcessingModeDetail)
+async def get_processing_mode(mode_id: str):
+    """
+    Get full mode details including provider/model (for admin/developer use).
+
+    This endpoint returns the complete configuration for a mode including
+    the underlying provider, model, and document extractor settings.
+
+    Args:
+        mode_id: Mode identifier ("best", "balanced", "fast")
+
+    Returns:
+        Full mode configuration including provider/model details
+    """
+    from core.modes import get_mode
+
+    mode = get_mode(mode_id)
+    if not mode:
+        raise HTTPException(status_code=404, detail=f"Mode '{mode_id}' not found")
+
+    return {
+        "id": mode.id,
+        "name": mode.name,
+        "description": mode.description,
+        "provider": mode.provider,
+        "model": mode.model,
+        "doc_extractor": mode.doc_extractor,
+        "icon": mode.icon,
+        "estimated_speed": mode.estimated_speed
+    }
+
+
 @app.get("/v1/classifiers", response_model=ClassifierListResponse)
 async def list_classifiers():
     """
@@ -1056,12 +1124,28 @@ current_user: User = Depends(get_current_user)  # Optional auth for testing
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
 
+    # Resolve mode to provider/model/doc_extractor if mode is provided
+    if run.mode:
+        from core.modes import get_mode, get_default_mode
+        mode = get_mode(run.mode)
+        if not mode:
+            raise HTTPException(status_code=400, detail=f"Invalid mode: {run.mode}. Valid modes: best, balanced, fast")
+        provider = mode.provider
+        model = mode.model
+        doc_extractor = mode.doc_extractor
+        logger.info(f"Resolved mode '{run.mode}' to provider={provider}, model={model}, doc_extractor={doc_extractor}")
+    else:
+        # Use explicit values or defaults
+        provider = run.provider or "openrouter"
+        model = run.model or "meta-llama/llama-3.3-70b-instruct"
+        doc_extractor = run.doc_extractor or "docling"
+
     # Create run in database
     db_run = Run(
         case_id=run.case_id,
-        provider=run.provider or "openrouter",
-        model=run.model or "meta-llama/llama-3.3-70b-instruct",
-        doc_extractor=run.doc_extractor or "docling",
+        provider=provider,
+        model=model,
+        doc_extractor=doc_extractor,
         status=RunStatus.QUEUED
     )
     db.add(db_run)

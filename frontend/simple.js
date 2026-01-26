@@ -37,6 +37,9 @@ const TOKEN_EXPIRY_KEY = 'jwt_expiry';
 let lastClientId = localStorage.getItem('last_client_id');
 let lastCaseId = localStorage.getItem('last_case_id');
 
+// Processing mode state (replaces provider/model selection)
+let selectedMode = 'balanced'; // Default mode
+
 // ============================================================================
 // Token Management
 // ============================================================================
@@ -99,11 +102,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Render API badge
     renderApiBadge();
 
-    // Load providers
+    // Load processing modes (replaces provider selection for users)
     try {
-        await loadProviders();
+        await loadModes();
     } catch (error) {
-        console.error('Failed to load providers:', error);
+        console.error('Failed to load modes:', error);
     }
 
     // Check auth status
@@ -687,12 +690,93 @@ function updateButtonStates() {
 }
 
 // ============================================================================
-// Providers & Models
+// Processing Modes (replaces Providers & Models for user-facing UI)
 // ============================================================================
 
+const MODE_ICONS = {
+    'star': '⭐',
+    'scales': '⚖️',
+    'bolt': '⚡'
+};
+
+async function loadModes() {
+    const container = document.getElementById('modeSelector');
+    if (!container) return;
+
+    try {
+        const response = await axios.get(`${API_URL}/v1/modes`);
+        const { modes, default: defaultMode } = response.data;
+
+        selectedMode = defaultMode;
+        container.innerHTML = '';
+
+        modes.forEach(mode => {
+            const isSelected = mode.id === selectedMode;
+            const card = document.createElement('label');
+            card.className = `mode-card p-4 rounded-xl cursor-pointer flex items-start border-2 transition-all ${
+                isSelected
+                    ? 'border-blue-500 bg-blue-50 selected'
+                    : 'border-gray-200 hover:border-gray-300 bg-white'
+            }`;
+            card.setAttribute('data-mode-id', mode.id);
+
+            const icon = MODE_ICONS[mode.icon] || '📄';
+
+            card.innerHTML = `
+                <input type="radio" name="processingMode" value="${escapeHtml(mode.id)}"
+                       class="mt-1 mr-4 w-4 h-4 text-blue-600"
+                       ${isSelected ? 'checked' : ''}>
+                <div class="flex-1">
+                    <div class="flex items-center">
+                        <span class="mr-2">${icon}</span>
+                        <span class="font-medium text-sm text-gray-900">${escapeHtml(mode.name)}</span>
+                        ${mode.id === defaultMode ? '<span class="ml-2 text-xs text-blue-600 font-medium">(Recommended)</span>' : ''}
+                    </div>
+                    <div class="flex items-center mt-1">
+                        <span class="text-xs text-gray-600">${escapeHtml(mode.description)}</span>
+                    </div>
+                    <div class="text-xs text-gray-500 mt-1">${escapeHtml(mode.estimated_speed)}</div>
+                </div>
+            `;
+
+            const radio = card.querySelector('input[type="radio"]');
+            radio.addEventListener('change', (e) => {
+                selectedMode = e.target.value;
+                updateModeSelection();
+            });
+
+            container.appendChild(card);
+        });
+
+    } catch (error) {
+        console.error('Failed to load modes:', error);
+        container.innerHTML = `
+            <div class="text-red-500 text-sm text-center py-4">
+                Failed to load processing modes. Please refresh the page.
+            </div>
+        `;
+    }
+}
+
+function updateModeSelection() {
+    const cards = document.querySelectorAll('.mode-card');
+    cards.forEach(card => {
+        const modeId = card.getAttribute('data-mode-id');
+        const isSelected = modeId === selectedMode;
+        card.className = `mode-card p-4 rounded-xl cursor-pointer flex items-start border-2 transition-all ${
+            isSelected
+                ? 'border-blue-500 bg-blue-50 selected'
+                : 'border-gray-200 hover:border-gray-300 bg-white'
+        }`;
+    });
+}
+
+// Legacy provider/model functions kept for admin.html compatibility
 let providersLoaded = false;
 
 async function loadProviders() {
+    // This function is now only used by admin.html
+    // simple.html uses loadModes() instead
     try {
         const response = await axios.get(`${API_URL}/v1/providers`);
         const providerSelect = document.getElementById('providerSelect');
@@ -1009,13 +1093,6 @@ async function startProcessing() {
         return;
     }
 
-    // Get settings
-    const useSmartProvider = document.getElementById('useSmartProvider')?.checked !== false;
-    const useLocalOCR = document.getElementById('useLocalOCR')?.checked !== false;
-    const provider = useSmartProvider ? 'openrouter' : (document.getElementById('providerSelect')?.value || 'openrouter');
-    const model = useSmartProvider ? 'meta-llama/llama-3.3-70b-instruct' : (document.getElementById('modelSelect')?.value || 'meta-llama/llama-3.3-70b-instruct');
-    const docExtractor = useLocalOCR ? 'docling' : (document.getElementById('docExtractorSelect')?.value || 'docling');
-
     const btn = document.getElementById('startProcessingBtn');
     if (btn) {
         btn.disabled = true;
@@ -1023,12 +1100,10 @@ async function startProcessing() {
     }
 
     try {
-        // Create run
+        // Create run with mode-based selection (backend resolves to provider/model)
         const runCreate = await axios.post(`${API_URL}/v1/runs`, {
             case_id: parseInt(caseId),
-            provider,
-            model,
-            doc_extractor: docExtractor,
+            mode: selectedMode,  // Send mode instead of provider/model
             enable_classification: document.getElementById('enableClassification')?.checked || false
         });
 

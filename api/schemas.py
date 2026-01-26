@@ -34,6 +34,38 @@ class DocumentStatusEnum(str, Enum):
 
 
 # ============================================================================
+# Processing Mode Schemas
+# ============================================================================
+
+class ProcessingModeInfo(BaseModel):
+    """User-facing processing mode (hides provider/model details)"""
+    id: str
+    name: str
+    description: str
+    icon: str
+    estimated_speed: str
+
+
+class ProcessingModesResponse(BaseModel):
+    """Response for GET /v1/modes endpoint"""
+    modes: List[ProcessingModeInfo]
+    default: str
+    timestamp: str
+
+
+class ProcessingModeDetail(BaseModel):
+    """Full mode details including provider/model (for admin)"""
+    id: str
+    name: str
+    description: str
+    provider: str
+    model: str
+    doc_extractor: str
+    icon: str
+    estimated_speed: str
+
+
+# ============================================================================
 # Client Schemas
 # ============================================================================
 
@@ -112,9 +144,12 @@ class UserResponse(BaseModel):
 
 class RunCreate(BaseModel):
     case_id: int
-    provider: Optional[str] = "openrouter"  # Standardized default (v0.11.0+)
-    model: Optional[str] = "meta-llama/llama-3.3-70b-instruct"  # Standardized default (v0.11.0+)
-    doc_extractor: Optional[str] = "docling"  # Document extractor: 'docling' or 'qwen_vl'
+    # Mode-based selection (for simple.html users) - takes precedence over explicit provider/model
+    mode: Optional[str] = None  # "best", "balanced", "fast"
+    # Explicit selection (for admin/developer use)
+    provider: Optional[str] = None  # Default resolved from mode or "openrouter"
+    model: Optional[str] = None  # Default resolved from mode or provider default
+    doc_extractor: Optional[str] = None  # Default resolved from mode or "docling"
     files: Optional[List[Dict[str, Any]]] = None  # Optional file manifest from frontend upload
     # Document classification (Layer 1.5) - always enabled by default
     enable_classification: Optional[bool] = True
