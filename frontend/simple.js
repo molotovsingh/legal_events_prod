@@ -696,7 +696,8 @@ function updateButtonStates() {
 const MODE_ICONS = {
     'star': '⭐',
     'scales': '⚖️',
-    'bolt': '⚡'
+    'bolt': '⚡',
+    'dollar': '💰'
 };
 
 async function loadModes() {
@@ -967,26 +968,54 @@ async function createCase() {
         return;
     }
 
+    // Collect optional KYC fields
+    const opposingPartiesRaw = document.getElementById('opposingParties')?.value.trim();
+    const matterType = document.getElementById('matterType')?.value || null;
+    const jurisdiction = document.getElementById('jurisdiction')?.value.trim() || null;
+    const caseNumber = document.getElementById('caseNumber')?.value.trim() || null;
+
+    // Parse opposing parties (comma-separated)
+    const opposingParties = opposingPartiesRaw
+        ? opposingPartiesRaw.split(',').map(p => p.trim()).filter(p => p)
+        : null;
+
     if (statusDiv) statusDiv.innerHTML = '<span class="text-blue-600"><span class="spinner"></span> Creating...</span>';
 
     try {
-        const response = await axios.post(`${API_URL}/v1/cases`, {
+        const payload = {
             client_id: parseInt(clientId),
             name: caseName
-        });
+        };
+
+        // Add KYC fields only if provided
+        if (opposingParties && opposingParties.length > 0) payload.opposing_parties = opposingParties;
+        if (matterType) payload.matter_type = matterType;
+        if (jurisdiction) payload.jurisdiction = jurisdiction;
+        if (caseNumber) payload.case_number = caseNumber;
+
+        const response = await axios.post(`${API_URL}/v1/cases`, payload);
         lastCaseId = response.data.id;
         localStorage.setItem('last_case_id', lastCaseId);
 
-        if (statusDiv) statusDiv.innerHTML = `<span class="text-green-600">Created! ID: ${lastCaseId}</span>`;
+        const hasKyc = opposingParties || matterType || jurisdiction || caseNumber;
+        if (statusDiv) statusDiv.innerHTML = `<span class="text-green-600">Created! ID: ${lastCaseId}${hasKyc ? ' (with context)' : ''}</span>`;
 
         // Refresh cases and select the new one
         await loadCases(clientId);
         const caseSelect = document.getElementById('quickCaseSelect');
         if (caseSelect) caseSelect.value = lastCaseId;
 
-        // Clear input
+        // Clear inputs
         const input = document.getElementById('caseName');
         if (input) input.value = '';
+        const oppInput = document.getElementById('opposingParties');
+        if (oppInput) oppInput.value = '';
+        const mtSelect = document.getElementById('matterType');
+        if (mtSelect) mtSelect.value = '';
+        const jurInput = document.getElementById('jurisdiction');
+        if (jurInput) jurInput.value = '';
+        const cnInput = document.getElementById('caseNumber');
+        if (cnInput) cnInput.value = '';
 
         updateButtonStates();
     } catch (error) {
@@ -1100,12 +1129,28 @@ async function startProcessing() {
     }
 
     try {
-        // Create run with mode-based selection (backend resolves to provider/model)
-        const runCreate = await axios.post(`${API_URL}/v1/runs`, {
+        // Check for explicit model override from admin settings
+        const savedModel = localStorage.getItem('extraction_model');
+        const savedDocExtractor = localStorage.getItem('doc_extractor');
+
+        // Build request payload
+        const runPayload = {
             case_id: parseInt(caseId),
-            mode: selectedMode,  // Send mode instead of provider/model
+            mode: selectedMode,  // Send mode as fallback
             enable_classification: document.getElementById('enableClassification')?.checked || false
-        });
+        };
+
+        // If admin has set explicit model override, use it instead of mode
+        if (savedModel) {
+            runPayload.model = savedModel;
+            runPayload.provider = 'openrouter';  // All verified models use OpenRouter
+        }
+        if (savedDocExtractor) {
+            runPayload.doc_extractor = savedDocExtractor;
+        }
+
+        // Create run with mode-based selection (backend resolves to provider/model)
+        const runCreate = await axios.post(`${API_URL}/v1/runs`, runPayload);
 
         currentRunId = runCreate.data.run_id;
 

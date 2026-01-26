@@ -403,7 +403,7 @@ async def list_processing_modes():
     Each mode maps to a specific provider/model combination configured on the backend.
 
     This is the user-facing API - it hides technical details like provider names
-    and model IDs, presenting simple choices like "Best Quality", "Balanced", "Fast".
+    and model IDs, presenting simple choices like "Best Quality", "Balanced", "Budget".
 
     Returns:
         modes: List of available modes with name, description, icon
@@ -439,7 +439,7 @@ async def get_processing_mode(mode_id: str):
     the underlying provider, model, and document extractor settings.
 
     Args:
-        mode_id: Mode identifier ("best", "balanced", "fast")
+        mode_id: Mode identifier ("best", "balanced", "medium")
 
     Returns:
         Full mode configuration including provider/model details
@@ -847,6 +847,27 @@ async def create_case(
     db.add(assignment)
     db.commit()
 
+    # Create CaseMetadata if any KYC fields provided (improves relevance classification)
+    if any([case.opposing_parties, case.matter_type, case.jurisdiction, case.case_number]):
+        from infra.timeline import create_or_update_case_metadata
+
+        # Build parties_json: client first, then opposing parties
+        parties_json = None
+        if case.opposing_parties:
+            parties_json = [{"name": client.name, "role": "Client"}]
+            parties_json += [{"name": p, "role": "Opposing Party"} for p in case.opposing_parties]
+
+        create_or_update_case_metadata(
+            db=db,
+            case_id=db_case.id,
+            parties_json=parties_json,
+            case_type=case.matter_type,
+            jurisdiction=case.jurisdiction,
+            case_number=case.case_number,
+            is_confirmed=True  # User-provided = confirmed
+        )
+        logger.info(f"Created CaseMetadata for case {db_case.id} with KYC: parties={len(parties_json or [])}, type={case.matter_type}")
+
     # current_user is now guaranteed by require_auth dependency
     logger.info(f"Created case: {db_case.name} (ID: {db_case.id}) by user {current_user.email} (auto-assigned as lead)")
     return db_case
@@ -1124,21 +1145,33 @@ current_user: User = Depends(get_current_user)  # Optional auth for testing
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
 
-    # Resolve mode to provider/model/doc_extractor if mode is provided
-    if run.mode:
-        from core.modes import get_mode, get_default_mode
+    # Resolve provider/model/doc_extractor with precedence:
+    # 1. Explicit model/provider in request (from admin settings) - highest priority
+    # 2. Mode-based selection (user-facing UI)
+    # 3. Defaults
+    if run.model:
+        # Explicit model override from admin/developer settings
+        provider = run.provider or "openrouter"
+        model = run.model
+        doc_extractor = run.doc_extractor or "docling"
+        logger.info(f"Using explicit model override: provider={provider}, model={model}")
+    elif run.mode:
+        # Mode-based selection (standard user flow)
+        from core.modes import get_mode, get_default_mode, get_mode_ids
         mode = get_mode(run.mode)
         if not mode:
-            raise HTTPException(status_code=400, detail=f"Invalid mode: {run.mode}. Valid modes: best, balanced, fast")
+            valid_modes = ", ".join(get_mode_ids(include_developer=True))
+            raise HTTPException(status_code=400, detail=f"Invalid mode: {run.mode}. Valid modes: {valid_modes}")
         provider = mode.provider
         model = mode.model
-        doc_extractor = mode.doc_extractor
+        doc_extractor = run.doc_extractor or mode.doc_extractor
         logger.info(f"Resolved mode '{run.mode}' to provider={provider}, model={model}, doc_extractor={doc_extractor}")
     else:
-        # Use explicit values or defaults
+        # Use defaults
         provider = run.provider or "openrouter"
-        model = run.model or "meta-llama/llama-3.3-70b-instruct"
+        model = "anthropic/claude-sonnet-4.5"  # Updated default to Claude Sonnet 4.5
         doc_extractor = run.doc_extractor or "docling"
+        logger.info(f"Using defaults: provider={provider}, model={model}")
 
     # Create run in database
     db_run = Run(
@@ -1578,10 +1611,18 @@ async def get_run_events(
         query = query.filter(Event.id > cursor)
 
     events = query.order_by(Event.id).limit(limit).all()
-    
-    # Convert to response format
+
+    # Fetch classification data for documents in this batch
+    doc_ids = list(set(e.document_id for e in events))
+    classifications = db.query(DocumentClassification).filter(
+        DocumentClassification.document_id.in_(doc_ids)
+    ).all() if doc_ids else []
+    classification_map = {c.document_id: c for c in classifications}
+
+    # Convert to response format with relevance data
     event_list = []
     for event in events:
+        cls = classification_map.get(event.document_id)
         event_list.append({
             "id": event.id,
             "number": event.number,
@@ -1589,11 +1630,14 @@ async def get_run_events(
             "event_particulars": event.event_particulars,
             "citation": event.citation,
             "document_reference": event.document_reference,
-            "document_id": event.document_id
+            "document_id": event.document_id,
+            "relevance_flag": cls.relevance_flag.value if cls and cls.relevance_flag else "relevant",
+            "relevance_score": cls.relevance_score if cls else None,
+            "relevance_reason": cls.relevance_reason if cls else None
         })
-    
+
     next_cursor = events[-1].id if events else None
-    
+
     return {
         "events": event_list,
         "next_cursor": next_cursor,
@@ -1895,44 +1939,61 @@ async def export_run(
     # Generate new artifact (this would be done in background normally)
     # For now, we'll do it synchronously as a placeholder
     events = db.query(Event).filter(Event.run_id == run_id).all()
-    
+
     if not events:
         raise HTTPException(status_code=404, detail="No events found for this run")
-    
+
+    # Fetch classification data for all documents in this run
+    # Build a mapping: document_id -> DocumentClassification
+    doc_ids = list(set(e.document_id for e in events))
+    classifications = db.query(DocumentClassification).filter(
+        DocumentClassification.document_id.in_(doc_ids)
+    ).all()
+    classification_map = {c.document_id: c for c in classifications}
+
+    # Extended headers with relevance columns
+    EXPORT_HEADERS_WITH_RELEVANCE = FIVE_COLUMN_HEADERS + ["Relevance Flag", "Relevance Score", "Relevance Reason"]
+
     # Create export based on format
     storage = MinioStorage()
-    
+
     if fmt == "json":
-        # Generate JSON export
-        data = [event.to_dict() for event in events]
+        # Generate JSON export with relevance data
+        data = [
+            event.to_dict(include_relevance=True, classification=classification_map.get(event.document_id))
+            for event in events
+        ]
         content = json.dumps(data, indent=2)
         content_bytes = content.encode('utf-8')
         content_type = "application/json"
-    
+
     elif fmt == "csv":
-        # Generate CSV export
+        # Generate CSV export with relevance columns
         import csv
         import io
-        
+
         output = io.StringIO()
-        writer = csv.DictWriter(output, fieldnames=FIVE_COLUMN_HEADERS)
+        writer = csv.DictWriter(output, fieldnames=EXPORT_HEADERS_WITH_RELEVANCE)
         writer.writeheader()
-        
+
         for event in events:
-            writer.writerow(event.to_dict())
-        
+            writer.writerow(event.to_dict(include_relevance=True, classification=classification_map.get(event.document_id)))
+
         content = output.getvalue()
         content_bytes = content.encode('utf-8')
         content_type = "text/csv"
-    
+
     else:  # xlsx
-        # Generate Excel export
+        # Generate Excel export with relevance columns
         import pandas as pd
         import io
-        
-        data = [event.to_dict() for event in events]
+
+        data = [
+            event.to_dict(include_relevance=True, classification=classification_map.get(event.document_id))
+            for event in events
+        ]
         df = pd.DataFrame(data)
-        
+
         output = io.BytesIO()
         # Use openpyxl engine (available per requirements.txt) for writing xlsx
         df.to_excel(output, index=False, sheet_name="Legal Events", engine='openpyxl')
@@ -2332,6 +2393,505 @@ async def cleanup_stale_workers_endpoint(current_user: dict = Depends(get_curren
             status_code=500,
             detail=f"Worker cleanup failed. Please contact support with reference: {correlation_id}"
         )
+
+
+# ============================================================================
+# Timeline Endpoints (Case-Centric Document Flow)
+# ============================================================================
+
+@app.get("/v1/cases/{case_id}/timeline")
+async def get_case_timeline(
+    case_id: int,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Get the current timeline for a case.
+
+    Returns the most recent timeline version with all events.
+    """
+    from infra.timeline import get_current_timeline
+
+    # Verify case exists and user has access
+    case = db.query(Case).filter(Case.id == case_id).first()
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    # Check authorization
+    if current_user.get("role") != "admin":
+        assignment = db.query(CaseAssignment).filter(
+            CaseAssignment.case_id == case_id,
+            CaseAssignment.user_id == current_user.get("user_id")
+        ).first()
+        if not assignment:
+            raise HTTPException(status_code=403, detail="Access denied to this case")
+
+    timeline = get_current_timeline(db, case_id)
+    if not timeline:
+        return {
+            "case_id": case_id,
+            "message": "No timeline exists for this case yet",
+            "events": [],
+            "event_count": 0
+        }
+
+    return timeline.to_dict()
+
+
+@app.get("/v1/cases/{case_id}/timeline/versions")
+async def get_timeline_versions(
+    case_id: int,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Get all timeline versions for a case.
+
+    Returns version history with metadata but not full event lists.
+    """
+    from infra.timeline import get_all_timeline_versions
+
+    # Verify case exists
+    case = db.query(Case).filter(Case.id == case_id).first()
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    # Check authorization
+    if current_user.get("role") != "admin":
+        assignment = db.query(CaseAssignment).filter(
+            CaseAssignment.case_id == case_id,
+            CaseAssignment.user_id == current_user.get("user_id")
+        ).first()
+        if not assignment:
+            raise HTTPException(status_code=403, detail="Access denied to this case")
+
+    timelines = get_all_timeline_versions(db, case_id)
+
+    versions = []
+    for t in timelines:
+        versions.append({
+            "version": t.version,
+            "created_at": t.created_at.isoformat() if t.created_at else None,
+            "trigger_type": t.trigger_type.value if t.trigger_type else None,
+            "trigger_description": t.trigger_description,
+            "model_used": t.model_used,
+            "event_count": t.event_count,
+            "is_current": t.is_current,
+            "is_stale": t.is_stale
+        })
+
+    return {
+        "case_id": case_id,
+        "versions": versions,
+        "total_versions": len(versions)
+    }
+
+
+@app.get("/v1/cases/{case_id}/timeline/versions/{version}")
+async def get_timeline_version(
+    case_id: int,
+    version: int,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Get a specific timeline version.
+
+    Returns the full timeline for that version including all events.
+    """
+    from infra.timeline import get_timeline_version as get_version
+
+    # Verify case exists
+    case = db.query(Case).filter(Case.id == case_id).first()
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    # Check authorization
+    if current_user.get("role") != "admin":
+        assignment = db.query(CaseAssignment).filter(
+            CaseAssignment.case_id == case_id,
+            CaseAssignment.user_id == current_user.get("user_id")
+        ).first()
+        if not assignment:
+            raise HTTPException(status_code=403, detail="Access denied to this case")
+
+    timeline = get_version(db, case_id, version)
+    if not timeline:
+        raise HTTPException(status_code=404, detail=f"Timeline version {version} not found")
+
+    return timeline.to_dict()
+
+
+@app.post("/v1/cases/{case_id}/timeline/rebuild")
+async def rebuild_case_timeline(
+    case_id: int,
+    request: dict = None,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Trigger a full timeline rebuild for a case.
+
+    This queues a background job to regenerate the timeline from all documents.
+    """
+    # Verify case exists
+    case = db.query(Case).filter(Case.id == case_id).first()
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    # Check authorization
+    if current_user.get("role") != "admin":
+        assignment = db.query(CaseAssignment).filter(
+            CaseAssignment.case_id == case_id,
+            CaseAssignment.user_id == current_user.get("user_id")
+        ).first()
+        if not assignment:
+            raise HTTPException(status_code=403, detail="Access denied to this case")
+
+    # Get model from request or use default
+    request = request or {}
+    mode = request.get("mode", "balanced")
+    model_map = {
+        "best": "anthropic/claude-3-5-sonnet-20241022",
+        "balanced": "meta-llama/llama-3.3-70b-instruct",
+        "fast": "meta-llama/llama-3.3-70b-instruct"
+    }
+    model = model_map.get(mode, model_map["balanced"])
+
+    # Queue the rebuild job
+    try:
+        job = enqueue_job(
+            'worker.timeline_tasks.rebuild_case_timeline',
+            'default',
+            case_id=case_id,
+            model=model,
+            requested_by=current_user.get("email", "api_user")
+        )
+
+        return {
+            "job_id": job.id if hasattr(job, 'id') else str(uuid.uuid4()),
+            "message": "Timeline rebuild queued",
+            "case_id": case_id
+        }
+    except Exception as e:
+        correlation_id = str(uuid.uuid4())[:8]
+        logger.error(f"Failed to queue timeline rebuild (correlation_id: {correlation_id}): {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to queue rebuild. Reference: {correlation_id}"
+        )
+
+
+# ============================================================================
+# Case Metadata Endpoints
+# ============================================================================
+
+@app.get("/v1/cases/{case_id}/metadata")
+async def get_case_metadata_endpoint(
+    case_id: int,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Get extracted metadata for a case.
+
+    Returns parties, court info, judges, lawyers, etc.
+    """
+    from infra.timeline import get_case_metadata
+
+    # Verify case exists
+    case = db.query(Case).filter(Case.id == case_id).first()
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    # Check authorization
+    if current_user.get("role") != "admin":
+        assignment = db.query(CaseAssignment).filter(
+            CaseAssignment.case_id == case_id,
+            CaseAssignment.user_id == current_user.get("user_id")
+        ).first()
+        if not assignment:
+            raise HTTPException(status_code=403, detail="Access denied to this case")
+
+    metadata = get_case_metadata(db, case_id)
+    if not metadata:
+        return {
+            "case_id": case_id,
+            "message": "No metadata extracted for this case yet",
+            "is_confirmed": False
+        }
+
+    return metadata.to_dict()
+
+
+@app.post("/v1/cases/{case_id}/metadata/confirm")
+async def confirm_case_metadata(
+    case_id: int,
+    request: dict = None,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Confirm or update case metadata.
+
+    Allows user to review and confirm extracted metadata.
+    """
+    from infra.timeline import create_or_update_case_metadata
+
+    # Verify case exists
+    case = db.query(Case).filter(Case.id == case_id).first()
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    # Check authorization
+    if current_user.get("role") != "admin":
+        assignment = db.query(CaseAssignment).filter(
+            CaseAssignment.case_id == case_id,
+            CaseAssignment.user_id == current_user.get("user_id")
+        ).first()
+        if not assignment:
+            raise HTTPException(status_code=403, detail="Access denied to this case")
+
+    request = request or {}
+
+    metadata = create_or_update_case_metadata(
+        db=db,
+        case_id=case_id,
+        parties_json=request.get("parties"),
+        case_type=request.get("case_type"),
+        court=request.get("court"),
+        jurisdiction=request.get("jurisdiction"),
+        case_number=request.get("case_number"),
+        filing_date=request.get("filing_date"),
+        judges_json=request.get("judges"),
+        lawyers_json=request.get("lawyers"),
+        is_confirmed=True
+    )
+
+    return metadata.to_dict()
+
+
+# ============================================================================
+# Document Duplicate Check Endpoints
+# ============================================================================
+
+@app.post("/v1/documents/check-duplicates")
+async def check_duplicates(
+    request: dict,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Check if documents already exist in the system.
+
+    Used at upload time to detect duplicates before processing.
+    """
+    from infra.timeline import check_document_duplicate
+
+    case_id = request.get("case_id")
+    file_hashes = request.get("file_hashes", [])
+
+    if not case_id:
+        raise HTTPException(status_code=400, detail="case_id is required")
+
+    # Verify case exists
+    case = db.query(Case).filter(Case.id == case_id).first()
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    duplicates = []
+    new_files = []
+
+    for file_info in file_hashes:
+        filename = file_info.get("filename", "")
+        sha256 = file_info.get("sha256", "")
+
+        if not sha256:
+            new_files.append(file_info)
+            continue
+
+        result = check_document_duplicate(db, sha256, case_id)
+
+        if result["exists"]:
+            existing = result["existing_documents"][0] if result["existing_documents"] else {}
+            duplicates.append({
+                "filename": filename,
+                "sha256": sha256,
+                "existing_case_id": existing.get("case_id"),
+                "existing_case_name": existing.get("case_name"),
+                "existing_document_id": existing.get("id")
+            })
+        else:
+            new_files.append(file_info)
+
+    return {
+        "duplicates": duplicates,
+        "new_files": new_files,
+        "has_duplicates": len(duplicates) > 0
+    }
+
+
+@app.post("/v1/documents/{doc_id}/link-to-case")
+async def link_document_to_case(
+    doc_id: int,
+    request: dict,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Link a document to another case.
+
+    Creates a copy of the document record linked to the source,
+    and copies the events without re-extraction.
+    """
+    from infra.timeline import link_document_to_case as link_doc
+
+    target_case_id = request.get("target_case_id")
+    if not target_case_id:
+        raise HTTPException(status_code=400, detail="target_case_id is required")
+
+    # Verify source document exists
+    source_doc = db.query(Document).filter(Document.id == doc_id).first()
+    if not source_doc:
+        raise HTTPException(status_code=404, detail="Source document not found")
+
+    # Verify target case exists
+    target_case = db.query(Case).filter(Case.id == target_case_id).first()
+    if not target_case:
+        raise HTTPException(status_code=404, detail="Target case not found")
+
+    # Check authorization for both source and target cases
+    if current_user.get("role") != "admin":
+        # Check source case access
+        source_assignment = db.query(CaseAssignment).filter(
+            CaseAssignment.case_id == source_doc.case_id,
+            CaseAssignment.user_id == current_user.get("user_id")
+        ).first()
+        if not source_assignment:
+            raise HTTPException(status_code=403, detail="Access denied to source document's case")
+
+        # Check target case access
+        target_assignment = db.query(CaseAssignment).filter(
+            CaseAssignment.case_id == target_case_id,
+            CaseAssignment.user_id == current_user.get("user_id")
+        ).first()
+        if not target_assignment:
+            raise HTTPException(status_code=403, detail="Access denied to target case")
+
+    # Create or get a run in the target case for this linked document
+    # First try to find an existing run, or create one
+    existing_run = db.query(Run).filter(
+        Run.case_id == target_case_id,
+        Run.status == RunStatus.SUCCESS
+    ).order_by(Run.created_at.desc()).first()
+
+    if existing_run:
+        target_run_id = existing_run.id
+    else:
+        # Create a new run for linked documents
+        new_run = Run(
+            case_id=target_case_id,
+            status=RunStatus.SUCCESS,
+            provider="linked",
+            model="linked",
+            run_metadata={"linked_from_case": source_doc.case_id}
+        )
+        db.add(new_run)
+        db.commit()
+        db.refresh(new_run)
+        target_run_id = new_run.id
+
+    try:
+        linked_doc = link_doc(db, doc_id, target_case_id, target_run_id)
+
+        # Copy events from source document to new document
+        source_events = db.query(Event).filter(Event.document_id == doc_id).all()
+        events_copied = 0
+
+        for event in source_events:
+            new_event = Event(
+                run_id=target_run_id,
+                document_id=linked_doc.id,
+                number=event.number,
+                date=event.date,
+                event_particulars=event.event_particulars,
+                citation=event.citation,
+                document_reference=event.document_reference,
+                confidence_score=event.confidence_score
+            )
+            db.add(new_event)
+            events_copied += 1
+
+        db.commit()
+
+        # Queue timeline update for target case
+        try:
+            enqueue_job(
+                'worker.timeline_tasks.update_case_timeline_incremental',
+                'default',
+                case_id=target_case_id,
+                run_id=target_run_id,
+                model='meta-llama/llama-3.3-70b-instruct'
+            )
+        except Exception as e:
+            logger.warning(f"Failed to queue timeline update after document link: {e}")
+
+        return {
+            "new_document_id": linked_doc.id,
+            "events_copied": events_copied,
+            "message": f"Document linked successfully. {events_copied} events copied."
+        }
+
+    except Exception as e:
+        db.rollback()
+        correlation_id = str(uuid.uuid4())[:8]
+        logger.error(f"Failed to link document (correlation_id: {correlation_id}): {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to link document. Reference: {correlation_id}"
+        )
+
+
+# ============================================================================
+# Document Classification Endpoint
+# ============================================================================
+
+@app.get("/v1/documents/{doc_id}/classification")
+async def get_document_classification(
+    doc_id: int,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Get classification result for a specific document.
+
+    Returns document type, parties mentioned, and relevance assessment.
+    """
+    # Verify document exists
+    doc = db.query(Document).filter(Document.id == doc_id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    # Check authorization
+    if current_user.get("role") != "admin":
+        assignment = db.query(CaseAssignment).filter(
+            CaseAssignment.case_id == doc.case_id,
+            CaseAssignment.user_id == current_user.get("user_id")
+        ).first()
+        if not assignment:
+            raise HTTPException(status_code=403, detail="Access denied to this document")
+
+    classification = db.query(DocumentClassification).filter(
+        DocumentClassification.document_id == doc_id
+    ).first()
+
+    if not classification:
+        return {
+            "document_id": doc_id,
+            "message": "No classification available for this document"
+        }
+
+    return classification.to_dict()
 
 
 # ============================================================================

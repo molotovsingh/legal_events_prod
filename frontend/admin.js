@@ -42,12 +42,70 @@ axios.interceptors.response.use(
 
 document.addEventListener('DOMContentLoaded', async () => {
     setupEventListeners();
+    loadSavedModelSelection();
     await checkAuthStatus();
     await loadProviders();
     await loadModeMappings();
     await loadProviderStatus();
     await loadSystemHealth();
 });
+
+// ============================================================================
+// Model Selection Persistence
+// ============================================================================
+
+function loadSavedModelSelection() {
+    const savedModel = localStorage.getItem('extraction_model') || 'anthropic/claude-sonnet-4.5';
+    const savedDocExtractor = localStorage.getItem('doc_extractor') || 'docling';
+
+    const modelSelect = document.getElementById('extractionModel');
+    const docExtractorSelect = document.getElementById('docExtractorSelect');
+
+    if (modelSelect) {
+        modelSelect.value = savedModel;
+    }
+    if (docExtractorSelect) {
+        docExtractorSelect.value = savedDocExtractor;
+    }
+
+    updateModelStatus(savedModel);
+}
+
+function updateModelStatus(model) {
+    const statusEl = document.getElementById('modelStatus');
+    if (statusEl) {
+        statusEl.textContent = `Current: ${model}`;
+    }
+}
+
+function saveModelSelection() {
+    const modelSelect = document.getElementById('extractionModel');
+    const docExtractorSelect = document.getElementById('docExtractorSelect');
+
+    if (modelSelect) {
+        const model = modelSelect.value;
+        localStorage.setItem('extraction_model', model);
+        updateModelStatus(model);
+    }
+    if (docExtractorSelect) {
+        localStorage.setItem('doc_extractor', docExtractorSelect.value);
+    }
+
+    showToast('Model selection saved');
+}
+
+function showToast(message) {
+    // Create toast element
+    const toast = document.createElement('div');
+    toast.className = 'fixed bottom-4 right-4 bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg z-50 fade-in';
+    toast.textContent = message;
+    document.body.appendChild(toast);
+
+    // Remove after 3 seconds
+    setTimeout(() => {
+        toast.remove();
+    }, 3000);
+}
 
 function setupEventListeners() {
     const loginForm = document.getElementById('loginForm');
@@ -58,6 +116,20 @@ function setupEventListeners() {
     const providerSelect = document.getElementById('providerSelect');
     if (providerSelect) {
         providerSelect.addEventListener('change', (e) => loadModels(e.target.value));
+    }
+
+    // Model selection save button
+    const saveModelBtn = document.getElementById('saveModelBtn');
+    if (saveModelBtn) {
+        saveModelBtn.addEventListener('click', saveModelSelection);
+    }
+
+    // Update status on model change
+    const extractionModel = document.getElementById('extractionModel');
+    if (extractionModel) {
+        extractionModel.addEventListener('change', (e) => {
+            updateModelStatus(e.target.value);
+        });
     }
 }
 
@@ -212,7 +284,8 @@ async function loadModels(providerId) {
 const MODE_ICONS = {
     'star': '⭐',
     'scales': '⚖️',
-    'bolt': '⚡'
+    'bolt': '⚡',
+    'dollar': '💰'
 };
 
 async function loadModeMappings() {
