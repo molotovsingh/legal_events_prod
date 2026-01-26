@@ -308,7 +308,6 @@ async function estimateCost() {
     const provider = document.getElementById('providerSelect').value;
     const model = document.getElementById('modelSelect').value;
     const docExtractor = document.getElementById('docExtractorSelect').value || 'docling';
-    const enableClassification = document.getElementById('enableClassification')?.checked || false;
     const classifierModel = document.getElementById('classifierSelect')?.value || null;
     const previewEl = document.getElementById('costPreview');
 
@@ -340,14 +339,14 @@ async function estimateCost() {
             model: model || 'meta-llama/llama-3.3-70b-instruct',
             doc_extractor: docExtractor || 'docling',
             files: filesPayload,
-            enable_classification: enableClassification,
-            classification_model: classifierModel
+            enable_classification: true,
+            classification_model: classifierModel || 'meta-llama/llama-3.3-70b-instruct'
         };
 
         const estResp = await axios.post(`${API_URL}/v1/estimate-tokens`, estReq, { headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {} });
         const totals = estResp.data.totals;
         const cost = totals.cost_input_usd != null ? `$${totals.cost_input_usd.toFixed(4)}` : 'N/A';
-        previewEl.textContent = `Input tokens: ${totals.total_input_tokens} (events ${totals.event_input_tokens}${enableClassification ? ` + cls ${totals.classification_input_tokens}` : ''}) • Input cost: ${cost}`;
+        previewEl.textContent = `Input tokens: ${totals.total_input_tokens} (events ${totals.event_input_tokens} + cls ${totals.classification_input_tokens}) • Input cost: ${cost}`;
     } catch (e) {
         console.error('Estimate error:', e);
         previewEl.textContent = (e.response?.data?.detail) || 'Estimate failed';
@@ -645,15 +644,14 @@ async function startRun() {
         }
 
         // Step 1: Create run (no files)
-        const enableClassification = document.getElementById('enableClassification')?.checked || false;
         const classifierModel = document.getElementById('classifierSelect')?.value || null;
         const runCreateResp = await axios.post(`${API_URL}/v1/runs`, {
             case_id: parseInt(caseId),
             provider: provider || 'openrouter',
             model: model || null,
             doc_extractor: docExtractor || 'docling',
-            enable_classification: enableClassification,
-            classification_model: classifierModel
+            enable_classification: true,
+            classification_model: classifierModel || 'meta-llama/llama-3.3-70b-instruct'
         }, { headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {} });
 
         const runId = runCreateResp.data.run_id;

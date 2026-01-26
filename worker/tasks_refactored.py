@@ -47,6 +47,79 @@ from infra.worker_events import WorkerEventEmitter
 logger = logging.getLogger(__name__)
 
 
+# ============================================================================
+# Helper Classes
+# ============================================================================
+
+class DocumentFileWrapper:
+    """
+    File-like wrapper for pipeline processing.
+
+    Provides a consistent interface for the LegalEventsPipeline
+    to process documents downloaded from storage.
+
+    Attributes:
+        content: Binary file content
+        name: Original filename
+    """
+
+    def __init__(self, path: str, name: str):
+        """
+        Initialize wrapper by reading file from path.
+
+        Args:
+            path: Path to the temporary file
+            name: Original filename (used for document reference)
+        """
+        with open(path, 'rb') as f:
+            self.content = f.read()
+        self.name = name
+
+    def read(self) -> bytes:
+        """Return file content as bytes."""
+        return self.content
+
+    def getbuffer(self) -> bytes:
+        """Return buffer for compatibility with pipeline cache key generation."""
+        return self.content
+
+
+# ============================================================================
+# Helper Functions
+# ============================================================================
+
+def normalize_event_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Normalize event DataFrame by renaming display headers to internal field names.
+
+    The pipeline returns DataFrames with display headers (e.g., "No", "Date"),
+    but the database expects internal field names (e.g., "number", "date").
+
+    Args:
+        df: DataFrame with display headers from pipeline
+
+    Returns:
+        DataFrame with internal field names
+    """
+    if df.empty:
+        return df
+
+    # Import field mappings
+    from legal_events_core import FIVE_COLUMN_HEADERS, INTERNAL_FIELDS
+
+    # Create column mapping from display to internal names
+    column_mapping = {
+        FIVE_COLUMN_HEADERS[0]: INTERNAL_FIELDS[0],  # "No" -> "number"
+        FIVE_COLUMN_HEADERS[1]: INTERNAL_FIELDS[1],  # "Date" -> "date"
+        FIVE_COLUMN_HEADERS[2]: INTERNAL_FIELDS[2],  # "Event Particulars" -> "event_particulars"
+        FIVE_COLUMN_HEADERS[3]: INTERNAL_FIELDS[3],  # "Citation" -> "citation"
+        FIVE_COLUMN_HEADERS[4]: INTERNAL_FIELDS[4],  # "Document Reference" -> "document_reference"
+    }
+
+    # Rename only the columns that exist in the DataFrame
+    return df.rename(columns={k: v for k, v in column_mapping.items() if k in df.columns})
+
+
 def process_run(run_id: int, provider: str = "openrouter", model: str = None) -> Dict[str, Any]:
     """
     Process all documents in a run - Service Boundary Compliant Version
@@ -131,24 +204,24 @@ def process_run(run_id: int, provider: str = "openrouter", model: str = None) ->
             doc_extractor=doc_extractor
         )
 
-        # Optional document classification (Layer 1.5)
-        classification_enabled = False
+        # Document classification (Layer 1.5) - always enabled by default
+        # Default classification model (same as event extraction default)
+        DEFAULT_CLASSIFICATION_MODEL = 'meta-llama/llama-3.3-70b-instruct'
+
+        classification_enabled = True
         classification_model = None
         classifier = None
         try:
             meta = getattr(run, 'run_metadata', None) or {}
-            classification_enabled = bool(meta.get('enable_classification', False))
-            classification_model = meta.get('classification_model')
-            if classification_enabled:
-                # Default to recommended Llama 70B if not specified
-                classification_model = classification_model or 'meta-llama/llama-3.3-70b-instruct'
-                from legal_events_core.prompts.classification_factory import create_classifier
-                from legal_events_core.prompts.prompt_registry import get_default_variant
-                classifier = create_classifier(
-                    model_id=classification_model,
-                    prompt_variant=get_default_variant()
-                )
-                logger.info(f"🧭 Classification enabled with model: {classification_model}")
+            # Use model from metadata if specified, otherwise use default
+            classification_model = meta.get('classification_model') or DEFAULT_CLASSIFICATION_MODEL
+            from legal_events_core.prompts.classification_factory import create_classifier
+            from legal_events_core.prompts.prompt_registry import get_default_variant
+            classifier = create_classifier(
+                model_id=classification_model,
+                prompt_variant=get_default_variant()
+            )
+            logger.info(f"🧭 Classification enabled with model: {classification_model}")
         except Exception as e:
             logger.warning(f"Classification disabled due to error initializing classifier: {e}")
             classification_enabled = False
@@ -193,18 +266,7 @@ def process_run(run_id: int, provider: str = "openrouter", model: str = None) ->
                     emitter.emit_progress(run_id, f"Extracting text from {doc.filename}", doc.id)
                 
                 # Create a file-like object for the pipeline
-                class FileWrapper:
-                    def __init__(self, path, name):
-                        with open(path, 'rb') as f:
-                            self.content = f.read()
-                        self.name = name
-                    def read(self):
-                        return self.content
-                    def getbuffer(self):
-                        """Return buffer for compatibility with pipeline cache key generation"""
-                        return self.content
-                
-                file_obj = FileWrapper(tmp_path, doc.filename)
+                file_obj = DocumentFileWrapper(tmp_path, doc.filename)
                 df, warning = pipeline.process_documents_for_legal_events([file_obj])
 
                 # Extract plain text once for token counting fallbacks and classification
@@ -236,24 +298,8 @@ def process_run(run_id: int, provider: str = "openrouter", model: str = None) ->
 
                 # Convert DataFrame to event records
                 # CRITICAL: Rename display headers back to internal field names
-                if not df.empty:
-                    from legal_events_core import FIVE_COLUMN_HEADERS, INTERNAL_FIELDS
-
-                    # Create column mapping from display to internal names
-                    column_mapping = {
-                        FIVE_COLUMN_HEADERS[0]: INTERNAL_FIELDS[0],  # "No" -> "number"
-                        FIVE_COLUMN_HEADERS[1]: INTERNAL_FIELDS[1],  # "Date" -> "date"
-                        FIVE_COLUMN_HEADERS[2]: INTERNAL_FIELDS[2],  # "Event Particulars" -> "event_particulars"
-                        FIVE_COLUMN_HEADERS[3]: INTERNAL_FIELDS[3],  # "Citation" -> "citation"
-                        FIVE_COLUMN_HEADERS[4]: INTERNAL_FIELDS[4],  # "Document Reference" -> "document_reference"
-                    }
-
-                    # Rename only the columns that exist in the DataFrame
-                    df_renamed = df.rename(columns={k: v for k, v in column_mapping.items() if k in df.columns})
-
-                    results = {"events": df_renamed.to_dict('records')}
-                else:
-                    results = {"events": []}
+                df_normalized = normalize_event_dataframe(df)
+                results = {"events": df_normalized.to_dict('records')} if not df_normalized.empty else {"events": []}
                 
                 # WRITE events (worker's primary output)
                 # Batch all events into single transaction
@@ -554,39 +600,14 @@ def process_document(document_id: int, provider: str = "openrouter", model: str 
             doc_extractor=None  # Use default
         )
         
-        # Process document
-        # Create a file-like object for the pipeline
-        class FileWrapper:
-            def __init__(self, path, name):
-                with open(path, 'rb') as f:
-                    self.content = f.read()
-                self.name = name
-            def read(self):
-                return self.content
-        
-        file_obj = FileWrapper(tmp_path, doc.filename)
+        # Process document using shared file wrapper
+        file_obj = DocumentFileWrapper(tmp_path, doc.filename)
         df, warning = pipeline.process_documents_for_legal_events([file_obj])
 
         # Convert DataFrame to event records
         # CRITICAL: Rename display headers back to internal field names
-        if not df.empty:
-            from legal_events_core import FIVE_COLUMN_HEADERS, INTERNAL_FIELDS
-
-            # Create column mapping from display to internal names
-            column_mapping = {
-                FIVE_COLUMN_HEADERS[0]: INTERNAL_FIELDS[0],  # "No" -> "number"
-                FIVE_COLUMN_HEADERS[1]: INTERNAL_FIELDS[1],  # "Date" -> "date"
-                FIVE_COLUMN_HEADERS[2]: INTERNAL_FIELDS[2],  # "Event Particulars" -> "event_particulars"
-                FIVE_COLUMN_HEADERS[3]: INTERNAL_FIELDS[3],  # "Citation" -> "citation"
-                FIVE_COLUMN_HEADERS[4]: INTERNAL_FIELDS[4],  # "Document Reference" -> "document_reference"
-            }
-
-            # Rename only the columns that exist in the DataFrame
-            df_renamed = df.rename(columns={k: v for k, v in column_mapping.items() if k in df.columns})
-
-            results = {"events": df_renamed.to_dict('records')}
-        else:
-            results = {"events": []}
+        df_normalized = normalize_event_dataframe(df)
+        results = {"events": df_normalized.to_dict('records')} if not df_normalized.empty else {"events": []}
         
         # WRITE events
         # Batch all events into single transaction

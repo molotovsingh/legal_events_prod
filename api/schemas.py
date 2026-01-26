@@ -116,9 +116,9 @@ class RunCreate(BaseModel):
     model: Optional[str] = "meta-llama/llama-3.3-70b-instruct"  # Standardized default (v0.11.0+)
     doc_extractor: Optional[str] = "docling"  # Document extractor: 'docling' or 'qwen_vl'
     files: Optional[List[Dict[str, Any]]] = None  # Optional file manifest from frontend upload
-    # Optional document classification (Layer 1.5)
-    enable_classification: Optional[bool] = False
-    classification_model: Optional[str] = None
+    # Document classification (Layer 1.5) - always enabled by default
+    enable_classification: Optional[bool] = True
+    classification_model: Optional[str] = "meta-llama/llama-3.3-70b-instruct"
 
 
 class RunCreateResponse(BaseModel):
@@ -203,8 +203,8 @@ class TokenEstimateRequest(BaseModel):
     model: str
     doc_extractor: Optional[str] = "docling"
     files: List[FileRef]
-    enable_classification: Optional[bool] = False
-    classification_model: Optional[str] = None
+    enable_classification: Optional[bool] = True
+    classification_model: Optional[str] = "meta-llama/llama-3.3-70b-instruct"
 
 
 class PerDocTokenEstimate(BaseModel):
